@@ -1007,6 +1007,8 @@ endif(ENABLE_SERVER)
 
 ########### User made content daemon ###############
 
+find_package(Boost 1.36 REQUIRED COMPONENTS thread system date_time)
+
 if(ENABLE_UMCD)
 
 # SQL to cpp class generator.

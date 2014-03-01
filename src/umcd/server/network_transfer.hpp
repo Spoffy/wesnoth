@@ -41,7 +41,7 @@ public:
 	*/
 	void async_transfer()
 	{
-		assert(static_cast<bool>(socket));
+		assert(static_cast<bool>(socket_));
 		if(!this->is_done())
 			async_transfer_impl();
 	}
