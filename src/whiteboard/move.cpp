@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010 - 2013 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
+ Copyright (C) 2010 - 2014 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
  Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
  This program is free software; you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 
 #include "arrow.hpp"
 #include "config.hpp"
+#include "game_board.hpp"
 #include "game_end_exceptions.hpp"
 #include "mouse_events.hpp"
 #include "play_controller.hpp"
@@ -111,7 +112,10 @@ move::move(config const& cfg, bool hidden)
 	}
 	BOOST_FOREACH(config const& mark_cfg, route_cfg.child_range("mark")) {
 		route_->marks[map_location(mark_cfg["x"],mark_cfg["y"])]
-				= pathfind::marked_route::mark(mark_cfg["turns"],mark_cfg["zoc"],mark_cfg["capture"],mark_cfg["invisible"]);
+			= pathfind::marked_route::mark(mark_cfg["turns"],
+				mark_cfg["zoc"].to_bool(),
+				mark_cfg["capture"].to_bool(),
+				mark_cfg["invisible"].to_bool());
 	}
 
 	// Validate route_ some more
@@ -184,6 +188,8 @@ void move::init()
 	}
 }
 
+move::~move(){}
+
 void move::accept(visitor& v)
 {
 	v.visit(shared_from_this());
@@ -232,7 +238,7 @@ void move::execute(bool& success, bool& complete)
 	}
 	else if ( unit_it == resources::units->end()  ||  unit_it->id() != unit_id_ )
 	{
-		WRN_WB << "Unit disappeared from map during move execution.\n";
+		WRN_WB << "Unit disappeared from map during move execution." << std::endl;
 		success = false;
 		complete = true;
 	}
@@ -302,9 +308,9 @@ bool move::calculate_new_route(const map_location& source_hex, const map_locatio
 	pathfind::plain_route new_plain_route;
 	pathfind::shortest_path_calculator path_calc(*get_unit(),
 						resources::teams->at(team_index()),
-						*resources::teams, *resources::game_map);
+						*resources::teams, resources::gameboard->map());
 	new_plain_route = pathfind::a_star_search(source_hex,
-						dest_hex, 10000, &path_calc, resources::game_map->w(), resources::game_map->h());
+						dest_hex, 10000, &path_calc, resources::gameboard->map().w(), resources::gameboard->map().h());
 	if (new_plain_route.move_cost >= path_calc.getNoPathValue()) return false;
 	route_.reset(new pathfind::marked_route(pathfind::mark_route(new_plain_route)));
 	calculate_move_cost();
@@ -456,7 +462,7 @@ action::error move::check_validity() const
 	}
 
 	//If the path has at least two hexes (it can have less with the attack subclass), ensure destination hex is free
-	if(get_route().steps.size() >= 2 && get_visible_unit(get_dest_hex(),resources::teams->at(viewer_team())) != NULL) {
+	if(get_route().steps.size() >= 2 && resources::gameboard->get_visible_unit(get_dest_hex(),resources::teams->at(viewer_team())) != NULL) {
 		return LOCATION_OCCUPIED;
 	}
 
@@ -523,7 +529,7 @@ void move::calculate_move_cost()
 		// @todo: find a better treatment of movement points when defining moves out-of-turn
 		if(get_unit()->movement_left() - route_->move_cost < 0
 				&& resources::controller->current_side() == resources::screen->viewing_side()) {
-			WRN_WB << "Move defined with insufficient movement left.\n";
+			WRN_WB << "Move defined with insufficient movement left." << std::endl;
 		}
 
 		// If unit finishes move in a village it captures, set the move cost to unit's movement_left()

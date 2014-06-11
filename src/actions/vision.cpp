@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -23,7 +23,7 @@
 
 #include "../config.hpp"
 #include "../game_display.hpp"
-#include "../game_events.hpp"
+#include "../game_events/pump.hpp"
 #include "../log.hpp"
 #include "../map.hpp"
 #include "../map_label.hpp"
@@ -178,7 +178,7 @@ shroud_clearer::shroud_clearer() : jamming_(), sightings_(), view_team_(NULL)
 shroud_clearer::~shroud_clearer()
 {
 	if ( !sightings_.empty() ) {
-		ERR_NG << sightings_.size() << " sighted events were ignored.\n";
+		ERR_NG << sightings_.size() << " sighted events were ignored." << std::endl;
 	}
 }
 
@@ -230,7 +230,7 @@ bool shroud_clearer::clear_loc(team &tm, const map_location &loc,
                                size_t &enemy_count, size_t &friend_count,
                                move_unit_spectator * spectator)
 {
-	gamemap &map = *resources::game_map;
+	const gamemap &map = resources::gameboard->map();
 	// This counts as clearing a tile for the return value if it is on the
 	// board and currently fogged under shared vision. (No need to explicitly
 	// check for shrouded since shrouded implies fogged.)
@@ -284,7 +284,7 @@ bool shroud_clearer::clear_loc(team &tm, const map_location &loc,
 	// Check for units?
 	if ( result  &&  check_units  &&  loc != event_non_loc ) {
 		// Uncovered a unit?
-		unit_map::const_iterator sight_it = find_visible_unit(loc, tm);
+		unit_map::const_iterator sight_it = resources::gameboard->find_visible_unit(loc, tm);
 		if ( sight_it.valid() ) {
 			record_sighting(*sight_it, loc, viewer_id, view_loc);
 
@@ -433,7 +433,7 @@ bool shroud_clearer::clear_unit(const map_location &view_loc, team &view_team,
 	// Locate the unit in question.
 	unit_map::const_iterator find_it = resources::units->find(viewer.underlying_id);
 	const map_location & real_loc = find_it == resources::units->end() ?
-		                                map_location::null_location :
+		                                map_location::null_location() :
 		                                find_it->get_location();
 
 	return clear_unit(view_loc, view_team, viewer.underlying_id,
@@ -559,7 +559,7 @@ bool shroud_clearer::fire_events()
 		// Try to locate the sighting unit.
 		unit_map::const_iterator find_it = units.find(event.sighter_id);
 		const map_location & sight_loc =
-			find_it == units.end() ? map_location::null_location :
+			find_it == units.end() ? map_location::null_location() :
 			                         find_it->get_location();
 
 		{	// Raise the event based on the latest data.
@@ -600,7 +600,7 @@ std::vector<int> get_sides_not_seeing(const unit & target)
 
 	size_t team_size = teams.size();
 	for ( size_t i = 0; i != team_size; ++i)
-		if ( !target.is_visible_to_team(teams[i], false) )
+		if ( !target.is_visible_to_team(teams[i], resources::gameboard->map(), false) )
 			// not_see contains side numbers; i is a team index, so add 1.
 			not_seeing.push_back(i+1);
 
@@ -646,7 +646,7 @@ bool actor_sighted(const unit & target, const std::vector<int> * cache)
 	needs_event[target.side()-1] = false;
 	// Exclude those teams that cannot see the target.
 	for ( size_t i = 0; i != teams_size; ++i )
-		needs_event[i] = needs_event[i] && target.is_visible_to_team(teams[i], false);
+		needs_event[i] = needs_event[i] && target.is_visible_to_team(teams[i], resources::gameboard->map(), false);
 
 	// Cache "jamming".
 	std::vector< std::map<map_location, int> > jamming_cache(teams_size);

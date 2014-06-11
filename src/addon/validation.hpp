@@ -1,6 +1,6 @@
 /*
    Copyright (C) 2003 - 2008 by David White <dave@whitevine.net>
-                 2008 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+                 2008 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -40,8 +40,10 @@ extern const unsigned short default_campaignd_port;
  */
 enum ADDON_TYPE {
 	ADDON_UNKNOWN,		/**< a.k.a. anything. */
+	ADDON_CORE,			/**< Total Conversion Core. */
 	ADDON_SP_CAMPAIGN,	/**< Single-player campaign. */
 	ADDON_SP_SCENARIO,	/**< Single-player scenario. */
+	ADDON_SP_MP_CAMPAIGN, /**< Hybrid campaign. */
 	ADDON_MP_CAMPAIGN,	/**< Multiplayer campaign. */
 	ADDON_MP_SCENARIO,	/**< Multiplayer scenario. */
 	ADDON_MP_MAPS,		/**< Multiplayer plain (no WML) map pack. */

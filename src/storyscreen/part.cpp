@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+   Copyright (C) 2009 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,8 @@
 
 #include "config.hpp"
 #include "gamestatus.hpp"
-#include "game_events.hpp"
+#include "game_events/action_wml.hpp"
+#include "game_events/conditional_wml.hpp"
 #include "image.hpp"
 #include "serialization/string_utils.hpp"
 #include "util.hpp"
@@ -225,7 +226,7 @@ void part::resolve_wml(const vconfig &cfg)
 	}
 	background_layers_.push_back(bl);
 
-	
+
 	if(cfg.has_attribute("show_title")) {
 		show_title_ = cfg["show_title"].to_bool();
 	}
@@ -267,12 +268,33 @@ void part::resolve_wml(const vconfig &cfg)
 		}
 		// [if]
 		else if(key == "if") {
-			const std::string branch_label =
-				game_events::conditional_passed(node) ?
-				"then" : "else";
-			if(node.has_child(branch_label)) {
-				const vconfig branch = node.child(branch_label);
-				resolve_wml(branch);
+			// check if the [if] tag has a [then] child;
+			// if we try to execute a non-existing [then], we get a segfault
+			if (game_events::conditional_passed(node)) {
+				if (node.has_child("then")) {
+					resolve_wml(node.child("then"));
+				}
+			}
+			// condition not passed, check [elseif] and [else]
+			else {
+				// get all [elseif] children and set a flag
+				vconfig::child_list elseif_children = node.get_children("elseif");
+				bool elseif_flag = false;
+				// for each [elseif]: test if it has a [then] child
+				// if the condition matches, execute [then] and raise flag
+				for (vconfig::child_list::const_iterator elseif = elseif_children.begin(); elseif != elseif_children.end(); ++elseif) {
+					if (game_events::conditional_passed(*elseif)) {
+						if (elseif->has_child("then")) {
+							resolve_wml(elseif->child("then"));
+						}
+						elseif_flag = true;
+						break;
+					}
+				}
+				// if we have an [else] tag and no [elseif] was successful (flag not raised), execute it
+				if (node.has_child("else") && !elseif_flag) {
+					resolve_wml(node.child("else"));
+				}
 			}
 		}
 		// [switch]

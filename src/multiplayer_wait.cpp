@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2007 - 2013
+   Copyright (C) 2007 - 2014
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -16,14 +16,17 @@
 
 #include "dialogs.hpp"
 #include "gettext.hpp"
+#include "game_config_manager.hpp"
 #include "game_preferences.hpp"
 #include "gui/dialogs/transient_message.hpp"
 #include "game_display.hpp"
-#include "leader_list.hpp"
 #include "log.hpp"
 #include "marked-up_text.hpp"
+#include "mp_game_utils.hpp"
 #include "multiplayer_wait.hpp"
 #include "statistics.hpp"
+#include "saved_game.hpp"
+#include "sound.hpp"
 #include "wml_exception.hpp"
 #include "wml_separators.hpp"
 #include "formula_string_utils.hpp"
@@ -34,33 +37,45 @@ static lg::log_domain log_network("network");
 #define DBG_NW LOG_STREAM(debug, log_network)
 #define LOG_NW LOG_STREAM(info, log_network)
 
+static lg::log_domain log_enginerefac("enginerefac");
+#define LOG_RG LOG_STREAM(info, log_enginerefac)
+
 namespace {
+
 const SDL_Rect leader_pane_position = {-260,-370,260,370};
 const int leader_pane_border = 10;
+
 }
 
 namespace mp {
 
 wait::leader_preview_pane::leader_preview_pane(game_display& disp,
-		const std::vector<const config *> &side_list, int color) :
+	flg_manager& flg, const int color) :
 	gui::preview_pane(disp.video()),
-	side_list_(side_list),
+	flg_(flg),
 	color_(color),
-	leader_combo_(disp, std::vector<std::string>()),
-	gender_combo_(disp, std::vector<std::string>()),
-	leaders_(side_list, &leader_combo_, &gender_combo_),
-	selection_(0)
+	combo_leader_(disp, std::vector<std::string>()),
+	combo_gender_(disp, std::vector<std::string>())
 {
-	leaders_.set_color(color_);
+	flg_.reset_leader_combo(combo_leader_);
+	flg_.reset_gender_combo(combo_gender_);
+
 	set_location(leader_pane_position);
 }
 
 void wait::leader_preview_pane::process_event()
 {
+	if (combo_leader_.changed() && combo_leader_.selected() >= 0) {
+		flg_.set_current_leader(combo_leader_.selected());
 
-	if (leader_combo_.changed() || gender_combo_.changed()) {
-		leaders_.set_leader_combo(&leader_combo_);
-		leaders_.update_gender_list(leaders_.get_leader());
+		flg_.reset_gender_combo(combo_gender_);
+
+		set_dirty();
+	}
+
+	if (combo_gender_.changed() && combo_gender_.selected() >= 0) {
+		flg_.set_current_gender(combo_gender_.selected());
+
 		set_dirty();
 	}
 }
@@ -72,69 +87,70 @@ void wait::leader_preview_pane::draw_contents()
 	surface screen = video().getSurface();
 
 	SDL_Rect const &loc = location();
-	const SDL_Rect area = create_rect(loc.x + leader_pane_border
-			, loc.y + leader_pane_border
-			, loc.w - leader_pane_border * 2
-			, loc.h - leader_pane_border * 2);
+	const SDL_Rect area = sdl::create_rect(loc.x + leader_pane_border,
+		loc.y + leader_pane_border,loc.w - leader_pane_border * 2,
+		loc.h - leader_pane_border * 2);
 	const clip_rect_setter clipper(screen, &area);
 
-	if(selection_ < side_list_.size()) {
-		const config& side = *side_list_[selection_];
-		std::string faction = side["faction"];
+	std::string faction = flg_.current_faction()["faction"];
 
-		const std::string recruits = side["recruit"];
-		const std::vector<std::string> recruit_list = utils::split(recruits);
-		std::ostringstream recruit_string;
+	const std::string recruits = flg_.current_faction()["recruit"];
+	const std::vector<std::string> recruit_list = utils::split(recruits);
+	std::ostringstream recruit_string;
 
-		if(!faction.empty() && faction[0] == font::IMAGE) {
-			std::string::size_type p = faction.find_first_of(COLUMN_SEPARATOR);
-			if(p != std::string::npos && p < faction.size())
-				faction = faction.substr(p+1);
-		}
-		std::string leader = leaders_.get_leader();
-		std::string gender = leaders_.get_gender();
-
-		std::string image;
-
-		const unit_type *ut = unit_types.find(leader);
-
-		if (ut) {
-			const unit_type &utg = ut->get_gender_unit_type(gender);
-
-			image = utg.image() + leaders_.get_RC_suffix(utg.flag_rgb());
-		}
-
-		for(std::vector<std::string>::const_iterator itor = recruit_list.begin();
-				itor != recruit_list.end(); ++itor) {
-			const unit_type *rt = unit_types.find(*itor);
-			if (!rt) continue;
-
-			if(itor != recruit_list.begin())
-				recruit_string << ", ";
-			recruit_string << rt->type_name();
-		}
-
-		SDL_Rect image_rect = {area.x,area.y,0,0};
-
-		surface unit_image(image::get_image(image));
-
-		if(!unit_image.null()) {
-			image_rect.w = unit_image->w;
-			image_rect.h = unit_image->h;
-			sdl_blit(unit_image,NULL,screen,&image_rect);
-		}
-
-		font::draw_text(&video(),area,font::SIZE_PLUS,font::NORMAL_COLOR,faction,area.x + 110, area.y + 60);
-		const SDL_Rect leader_rect = font::draw_text(&video(),area,font::SIZE_SMALL,font::NORMAL_COLOR,
-				_("Leader: "),area.x, area.y + 110);
-		const SDL_Rect gender_rect = font::draw_text(&video(),area,font::SIZE_SMALL,font::NORMAL_COLOR,
-				_("Gender: "),area.x, leader_rect.y + 30 + (leader_rect.h - leader_combo_.height()) / 2);
-		font::draw_wrapped_text(&video(),area,font::SIZE_SMALL,font::NORMAL_COLOR,
-				_("Recruits: ") + recruit_string.str(),area.x, area.y + 132 + 30 + (leader_rect.h - leader_combo_.height()) / 2,
-				area.w);
-		leader_combo_.set_location(leader_rect.x + leader_rect.w + 16, leader_rect.y + (leader_rect.h - leader_combo_.height()) / 2);
-		gender_combo_.set_location(leader_rect.x + leader_rect.w + 16, gender_rect.y + (gender_rect.h - gender_combo_.height()) / 2);
+	if (!faction.empty() && faction[0] == font::IMAGE) {
+		std::string::size_type p = faction.find_first_of(COLUMN_SEPARATOR);
+		if (p != std::string::npos && p < faction.size())
+			faction = faction.substr(p+1);
 	}
+
+	std::string image;
+
+	const unit_type *ut = unit_types.find(flg_.current_leader());
+
+	if (ut) {
+		const unit_type &utg = ut->get_gender_unit_type(flg_.current_gender());
+
+		image = utg.image() + get_RC_suffix(utg.flag_rgb(), color_);
+	}
+
+	for(std::vector<std::string>::const_iterator itor = recruit_list.begin();
+		itor != recruit_list.end(); ++itor) {
+
+		const unit_type *rt = unit_types.find(*itor);
+		if (!rt) continue;
+
+		if (itor != recruit_list.begin())
+			recruit_string << ", ";
+		recruit_string << rt->type_name();
+	}
+
+	SDL_Rect image_rect = {area.x,area.y,0,0};
+
+	surface unit_image(image::get_image(image));
+
+	if (!unit_image.null()) {
+		image_rect.w = unit_image->w;
+		image_rect.h = unit_image->h;
+		sdl_blit(unit_image, NULL, screen, &image_rect);
+	}
+
+	font::draw_text(&video(), area, font::SIZE_PLUS, font::NORMAL_COLOR,
+		faction, area.x + 110, area.y + 60);
+	const SDL_Rect leader_rect = font::draw_text(&video(), area,
+		font::SIZE_SMALL, font::NORMAL_COLOR, _("Leader: "), area.x,
+		area.y + 110);
+	const SDL_Rect gender_rect = font::draw_text(&video(), area,
+		font::SIZE_SMALL, font::NORMAL_COLOR, _("Gender: "), area.x,
+		leader_rect.y + 30 + (leader_rect.h - combo_leader_.height()) / 2);
+	font::draw_wrapped_text(&video(), area, font::SIZE_SMALL,
+		font::NORMAL_COLOR, _("Recruits: ") + recruit_string.str(), area.x,
+		area.y + 132 + 30 + (leader_rect.h - combo_leader_.height()) / 2,
+		area.w);
+	combo_leader_.set_location(leader_rect.x + leader_rect.w + 16,
+		leader_rect.y + (leader_rect.h - combo_leader_.height()) / 2);
+	combo_gender_.set_location(leader_rect.x + leader_rect.w + 16,
+		gender_rect.y + (gender_rect.h - combo_gender_.height()) / 2);
 }
 
 bool wait::leader_preview_pane::show_above() const
@@ -149,42 +165,50 @@ bool wait::leader_preview_pane::left_side() const
 
 void wait::leader_preview_pane::set_selection(int selection)
 {
-	selection_ = selection;
-	leaders_.update_leader_list(selection_);
-	leaders_.update_gender_list(leaders_.get_leader());
-	set_dirty();
-}
+	if (selection >= 0) {
+		flg_.set_current_faction(selection);
 
-std::string wait::leader_preview_pane::get_selected_leader()
-{
-	return leaders_.get_leader();
-}
+		flg_.reset_leader_combo(combo_leader_);
+		flg_.reset_gender_combo(combo_gender_);
 
-std::string wait::leader_preview_pane::get_selected_gender()
-{
-	return leaders_.get_gender();
+		set_dirty();
+	}
 }
 
 handler_vector wait::leader_preview_pane::handler_members() {
 	handler_vector h;
-	h.push_back(&leader_combo_);
-	h.push_back(&gender_combo_);
+	h.push_back(&combo_leader_);
+	h.push_back(&combo_gender_);
 	return h;
 }
 
 
-wait::wait(game_display& disp, const config& cfg,
-		mp::chat& c, config& gamelist) :
+wait::wait(game_display& disp, const config& cfg, saved_game& state,
+	mp::chat& c, config& gamelist, const bool first_scenario) :
 	ui(disp, _("Game Lobby"), cfg, c, gamelist),
-	cancel_button_(disp.video(), _("Cancel")),
+	cancel_button_(disp.video(), first_scenario ? _("Cancel") : _("Quit")),
 	start_label_(disp.video(), _("Waiting for game to start..."), font::SIZE_SMALL, font::LOBBY_COLOR),
 	game_menu_(disp.video(), std::vector<std::string>(), false, -1, -1, NULL, &gui::menu::bluebg_style),
 	level_(),
-	state_(),
+	state_(state),
+	first_scenario_(first_scenario),
 	stop_updates_(false)
 {
 	game_menu_.set_numeric_keypress_selection(false);
 	gamelist_updated();
+}
+
+wait::~wait()
+{
+	try {
+	if (get_result() == QUIT) {
+		state_ = saved_game();
+		state_.classification().campaign_type = game_classification::MULTIPLAYER;
+
+		resources::config_manager->
+			load_game_config_for_game(state_.classification());
+	}
+	} catch (...) {}
 }
 
 void wait::process_event()
@@ -195,21 +219,34 @@ void wait::process_event()
 
 void wait::join_game(bool observe)
 {
-	//if we have got valid side data
-	//the first condition is to make sure that we don't have another
-	//WML message with a side-tag in it
-	while (!level_.has_attribute("version") || !level_.child("side")) {
-		network::connection data_res = dialogs::network_receive_dialog(disp(),
-				_("Getting game data..."), level_);
-		if (!data_res) {
-			set_result(QUIT);
-			return;
+	const bool download_res = download_level_data();
+	if (!download_res) {
+		set_result(QUIT);
+		return;
+	} else if (!level_["allow_new_game"].to_bool(true)) {
+		set_result(PLAY);
+		return;
+	}
+
+	if (first_scenario_) {
+		state_ = saved_game();
+		state_.classification().campaign_type = game_classification::MULTIPLAYER;
+
+		const config* campaign = &resources::config_manager->
+			game_config().find_child("campaign", "id",
+				level_.child(lexical_cast<std::string>(game_classification::MULTIPLAYER))["mp_campaign"]);
+		if (*campaign) {
+			state_.classification().difficulty =
+				level_.child(lexical_cast<std::string>(game_classification::MULTIPLAYER))["difficulty_define"].str();
+			state_.classification().campaign_define =
+				(*campaign)["define"].str();
+			state_.classification().campaign_xtra_defines =
+				utils::split((*campaign)["extra_defines"]);
 		}
-		check_response(data_res, level_);
-		if(level_.child("leave_game")) {
-			set_result(QUIT);
-			return;
-		}
+
+		// Make sure that we have the same config as host, if possible.
+		resources::config_manager->
+			load_game_config_for_game(state_.classification());
 	}
 
 	// Add the map name to the title.
@@ -253,8 +290,6 @@ void wait::join_game(bool observe)
 
 		//if the client is allowed to choose their team, instead of having
 		//it set by the server, do that here.
-		std::string leader_choice, gender_choice;
-
 		if(allow_changes) {
 			events::event_context context;
 
@@ -273,20 +308,21 @@ void wait::join_game(bool observe)
 			if (!color_str.empty())
 				color = game_config::color_info(color_str).index() - 1;
 
-			std::vector<const config *> leader_sides;
+			std::vector<const config*> era_factions;
 			BOOST_FOREACH(const config &side, possible_sides) {
-				leader_sides.push_back(&side);
+				era_factions.push_back(&side);
 			}
 
-			int forced_faction = find_suitable_faction(leader_sides, *side_choice);
-			if (forced_faction >= 0) {
-				const config *f = leader_sides[forced_faction];
-				leader_sides.clear();
-				leader_sides.push_back(f);
-			}
+			const bool lock_settings =
+				level_["force_lock_settings"].to_bool();
+			const bool saved_game =
+				level_.child("multiplayer")["savegame"].to_bool();
+
+			flg_manager flg(era_factions, *side_choice, lock_settings,
+				saved_game, color);
 
 			std::vector<std::string> choices;
-			BOOST_FOREACH(const config *s, leader_sides)
+			BOOST_FOREACH(const config *s, flg.choosable_factions())
 			{
 				const config &side = *s;
 				const std::string &name = side["name"];
@@ -305,38 +341,31 @@ void wait::join_game(bool observe)
 			}
 
 			std::vector<gui::preview_pane* > preview_panes;
-			leader_preview_pane leader_selector(disp(), leader_sides, color);
+			leader_preview_pane leader_selector(disp(), flg, color);
 			preview_panes.push_back(&leader_selector);
 
-			const int res = gui::show_dialog(disp(), NULL, _("Choose your faction:"), _("Starting position: ") + lexical_cast<std::string>(side_num + 1),
-						gui::OK_CANCEL, &choices, &preview_panes);
-			if(res < 0) {
+			const int faction_choice = gui::show_dialog(disp(), NULL,
+				_("Choose your faction:"), _("Starting position: ") +
+				lexical_cast<std::string>(side_num + 1), gui::OK_CANCEL,
+				&choices, &preview_panes);
+			if(faction_choice < 0) {
 				set_result(QUIT);
 				return;
 			}
-			const int faction_choice = res;
-			leader_choice = leader_selector.get_selected_leader();
-			gender_choice = leader_selector.get_selected_gender();
-
-			assert(static_cast<unsigned>(faction_choice) < leader_sides.size());
 
 			config faction;
 			config& change = faction.add_child("change_faction");
+			change["change_faction"] = true;
 			change["name"] = preferences::login();
-			change["faction"] = forced_faction >= 0 ? forced_faction : faction_choice;
-			change["leader"] = leader_choice;
-			change["gender"] = gender_choice;
+			change["faction"] = flg.current_faction()["id"];
+			change["leader"] = flg.current_leader();
+			change["gender"] = flg.current_gender();
 			network::send_data(faction, 0);
 		}
 
 	}
 
 	generate_menu();
-}
-
-const game_state& wait::get_state()
-{
-	return state_;
 }
 
 void wait::start_game()
@@ -359,7 +388,7 @@ void wait::start_game()
 		level_to_gamestate(level_, state_);
 	} else {
 
-		state_ = game_state(level_);
+		state_ = saved_game(level_);
 
 		// When we observe and don't have the addon installed we still need
 		// the old way, no clue why however. Code is a copy paste of
@@ -372,6 +401,8 @@ void wait::start_game()
 	}
 
 	LOG_NW << "starting game\n";
+	sound::play_UI_sound(game_config::sounds::mp_game_begins);
+	game_display::get_singleton()->send_notification(_("Wesnoth"), _ ("Game has begun!"));
 }
 
 void wait::layout_children(const SDL_Rect& rect)
@@ -424,8 +455,21 @@ void wait::process_network_data(const config& data, const network::connection so
 		/** @todo We should catch config::error and then leave the game. */
 		level_.apply_diff(c);
 		generate_menu();
-	} else if(data.child("side")) {
-		level_ = data;
+	} else if(const config &change = data.child("change_controller")) {
+		LOG_NW << "received change controller" << std::endl;
+		LOG_RG << "multiplayer_wait: [change_controller]" << std::endl;
+		LOG_RG << data.debug() << std::endl;
+		//const int side = lexical_cast<int>(change["side"]);
+
+		if (config & sidetochange = level_.find_child("side", "side", change["side"])) {
+			LOG_RG << "found side : " << sidetochange.debug() << std::endl;
+			sidetochange.merge_with(change);
+			LOG_RG << "changed to : " << sidetochange.debug() << std::endl;
+		} else {
+			LOG_RG << "change_controller didn't find any side!" << std::endl;
+		}
+	} else if(data.child("side") || data.child("next_scenario")) {
+		level_ = first_scenario_ ? data : data.child("next_scenario");
 		LOG_NW << "got some sides. Current number of sides = "
 			<< level_.child_count("side") << ','
 			<< data.child_count("side") << '\n';
@@ -486,7 +530,7 @@ void wait::generate_menu()
 			leader_image = utg.image() + std::string("~RC(") + utg.flag_rgb() + ">" + RCcolor + ")";
 #endif
 		} else {
-			leader_image = leader_list_manager::random_enemy_picture;
+			leader_image = random_enemy_picture;
 		}
 		if (!leader_image.empty()) {
 			// Dumps the "image" part of the faction name, if any,
@@ -550,6 +594,43 @@ void wait::generate_menu()
 	if (!gamelist().child("user")) {
 		set_user_list(playerlist, true);
 	}
+}
+
+bool wait::has_level_data() const
+{
+	if (first_scenario_) {
+		return level_.has_attribute("version") && level_.has_child("side");
+	} else {
+		return level_.has_child("next_scenario");
+	}
+}
+
+bool wait::download_level_data()
+{
+	if (!first_scenario_) {
+		// Ask for the next scenario data.
+		network::send_data(config("load_next_scenario"), 0);
+	}
+
+	while (!has_level_data()) {
+		network::connection data_res = dialogs::network_receive_dialog(
+			disp(), _("Getting game data..."), level_);
+
+		if (!data_res) {
+			return false;
+		}
+		check_response(data_res, level_);
+		if (level_.child("leave_game")) {
+			return false;
+		}
+	}
+
+	if (!first_scenario_) {
+		config cfg = level_.child("next_scenario");
+		level_ = cfg;
+	}
+
+	return true;
 }
 
 } // namespace mp

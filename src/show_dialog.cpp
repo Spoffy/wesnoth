@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -104,7 +104,7 @@ dialog_frame::~dialog_frame()
 }
 
 dialog_frame::dimension_measurements::dimension_measurements() :
-	interior(empty_rect), exterior(empty_rect), title(empty_rect), button_row(empty_rect)
+	interior(sdl::empty_rect), exterior(sdl::empty_rect), title(sdl::empty_rect), button_row(sdl::empty_rect)
 {}
 
 dialog_frame::dimension_measurements dialog_frame::layout(SDL_Rect const& rect) {
@@ -269,7 +269,7 @@ void dialog_frame::draw_background()
 	}
 
 	if(bg_ == NULL) {
-		ERR_DP << "could not find dialog background '" << dialog_style_.panel << "'\n";
+		ERR_DP << "could not find dialog background '" << dialog_style_.panel << "'" << std::endl;
 		return;
 	}
 	for(int i = 0; i < dim_.interior.w; i += bg_->w) {
@@ -340,9 +340,10 @@ private:
 		}
 	}
 
-	bool can_execute_command(hotkey::HOTKEY_COMMAND cmd, int /*index*/) const
+	bool can_execute_command(const hotkey::hotkey_command& cmd, int /*index*/) const
 	{
-		return (topic_.empty() == false && cmd == hotkey::HOTKEY_HELP) || cmd == hotkey::HOTKEY_SCREENSHOT;
+		hotkey::HOTKEY_COMMAND command = cmd.id;
+		return (topic_.empty() == false && command == hotkey::HOTKEY_HELP) || command == hotkey::HOTKEY_SCREENSHOT;
 	}
 
 	display& disp_;

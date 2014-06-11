@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -83,6 +83,7 @@ game::game(player_map& players, const network::connection host,
 
 game::~game()
 {
+	try {
 	save_replay();
 
 	user_vector users = all_game_users();
@@ -90,6 +91,7 @@ game::~game()
 		remove_player(*u, false, true);
 	}
 	clear_history();
+	} catch (...) {}
 }
 
 bool game::allow_observers() const {
@@ -153,15 +155,76 @@ std::string game::list_users(user_vector users, const std::string& func) const
 	return list;
 }
 
+void game::perform_controller_tweaks() {
+	const simple_wml::node::child_list & sides = level_.root().children("side");
+
+	DBG_GAME << "****\n Performing controller tweaks. sides = " << std::endl;
+	DBG_GAME << debug_sides_info() << std::endl;
+	DBG_GAME << "****" << std::endl;
+
+	update_side_data(); // Necessary to read the level_ and get sides_, etc. updated to match
+
+	nsides_ = 0;
+
+	for(simple_wml::node::child_list::const_iterator s = sides.begin(); s != sides.end(); ++s) {
+		nsides_++;
+		if ((**s)["controller"] != "null") {
+			int side_num = (**s)["side"].to_int() - 1;
+
+			if (sides_[side_num] == 0) {
+				sides_[side_num] = owner_;
+				std::stringstream msg;
+				msg << "Side "  << side_num + 1 << " had no controller during controller tweaks! The host was assigned control.";
+				LOG_GAME << msg.str() << " (game id: " << id_ << ")\n";
+				send_and_record_server_message(msg.str());
+			}
+
+			const player_map::const_iterator user = player_info_->find(sides_[side_num]);
+			std::string user_name = "null (server missing user)";
+			if (user == player_info_->end()) {
+				missing_user(user->first, __func__);
+			} else {
+				user_name = username(user);
+			}
+
+			change_controller(side_num, sides_[side_num], user_name , false, (**s)["controller"].to_string());
+
+			//next lines change controller types found in level_ to be what is appropriate for an observer at game start.
+			if ((**s)["controller"] == "ai") {
+				(*s)->set_attr("controller", "network_ai");
+			} else {	//this catches "reserved" also
+				(*s)->set_attr("controller", "network");
+			}
+
+			if (sides_[side_num] == 0) {
+				std::stringstream msg;
+				msg << "Side "  << side_num + 1 << " had no controller AFTER controller tweaks! Ruh Roh!";
+				LOG_GAME << msg.str() << " (game id: " << id_ << ")\n";
+			}
+
+		}
+	}
+
+	update_side_data(); // this is the last time that update_side_data will actually run, as now the game will start and started_ will be true.
+
+	//TODO: Does it matter that the server is telling the host to change a bunch of sides?
+	//According to playturn.cpp, the host should ignore all such messages. Still might be better
+	//not to send them at all, although not if it complicates the server code.
+}
+
 void game::start_game(const player_map::const_iterator starter) {
-	// If the game was already started we're actually advancing.
-	const bool advance = started_;
+	const simple_wml::node::child_list & sides = level_.root().children("side");
+	DBG_GAME << "****\n Starting game. sides = " << std::endl;
+	DBG_GAME << debug_sides_info() << std::endl;
+	DBG_GAME << "****" << std::endl;
+
+
 	started_ = true;
 	// Prevent inserting empty keys when reading.
 	const simple_wml::node& s = level_.root();
 	const bool save = s["savegame"].to_bool();
 	LOG_GAME << network::ip_address(starter->first) << "\t"
-		<< starter->second.name() << "\t" << (advance ? "advanced" : "started")
+		<< starter->second.name() << "\t" << "started"
 		<< (save ? " reloaded" : "") << " game:\t\"" << name_ << "\" (" << id_
 		<< ") with: " << list_users(players_, __func__) << ". Settings: map: " << s["id"]
 		<< "\tera: "       << (s.child("era") ? (*s.child("era"))["id"] : "")
@@ -179,15 +242,7 @@ void game::start_game(const player_map::const_iterator starter) {
 			"\tturn bonus: "     + s["mp_countdown_turn_bonus"].to_string() : "")
 		<< "\n";
 
-	update_side_data();
-
-	nsides_ = 0;
-	// Set all side controllers to 'human' so that observers will understand
-	// that they can't take control of any sides if they happen to have the
-	// same name as one of the descriptions.
-	const simple_wml::node::child_list& sides = level_.root().children("side");
 	for(simple_wml::node::child_list::const_iterator s = sides.begin(); s != sides.end(); ++s) {
-		nsides_++;
 		if ((**s)["controller"] != "null") {
 			int side_num = (**s)["side"].to_int() - 1;
 			if (sides_[side_num] == 0) {
@@ -196,7 +251,6 @@ void game::start_game(const player_map::const_iterator starter) {
 				LOG_GAME << msg.str() << " (game id: " << id_ << ")\n";
 				send_and_record_server_message(msg.str());
 			}
-			(*s)->set_attr("controller", "human");
 		}
 	}
 
@@ -213,14 +267,17 @@ void game::start_game(const player_map::const_iterator starter) {
 	end_turn_ = (turn - 1) * nsides_ + side - 1;
 	end_turn();
 	clear_history();
-	if (advance) {
-		// When the host advances tell everyone that the next scenario data is
-		// available.
-		static simple_wml::document notify_next_scenario("[notify_next_scenario]\n[/notify_next_scenario]\n", simple_wml::INIT_COMPRESSED);
-		send_data(notify_next_scenario, starter->first);
-	}
 	// Send [observer] tags for all observers that are already in the game.
 	send_observerjoins();
+}
+
+void game::update_game()
+{
+	started_ = false;
+	description_->set_attr("turn", "");
+
+	update_side_data();
+	describe_slots();
 }
 
 bool game::send_taken_side(simple_wml::document& cfg, const simple_wml::node::child_list::const_iterator side) const
@@ -269,6 +326,12 @@ bool game::take_side(const player_map::const_iterator user)
 }
 
 void game::update_side_data() {
+				//added by iceiceice: since level_ will now reflect how an observer
+	if (started_) return; 	//views the replay start position and not the current position, the sides_, side_controllers_,
+				//players_ info should not be updated from the level_ after the game has started.
+				//controller changes are now stored in the history, so an observer that joins will get up to
+				//date that way.
+
 	DBG_GAME << "update_side_data...\n";
 	DBG_GAME << debug_player_info();
 	// Remember everyone that is in the game.
@@ -312,13 +375,21 @@ void game::update_side_data() {
 					sides_[side_num] = *user;
 					side_found = true;
 				}
-			} else if (*user == owner_
-			&& ((**side)["controller"] == "ai" || (**side)["controller"] == "human")) {
-				side_controllers_[side_num] = (**side)["controller"].to_string();
-				sides_[side_num] = owner_;
-				side_found = true;
+			} else if (*user == owner_) {
+				if ((**side)["controller"] == "ai" || (**side)["controller"] == "human") {
+					side_controllers_[side_num] = (**side)["controller"].to_string();
+					sides_[side_num] = owner_;
+					side_found = true;
+				} else if ((**side)["controller"] == "network_ai") {
+					side_controllers_[side_num] = "ai"; //on server this field should only contain "ai" for ais. (there are no ais local to server)
+					sides_[side_num] = owner_;
+					side_found = true;
+				} else {
+					// "null"
+					side_controllers_[side_num] = (**side)["controller"].to_string();
+				}
 			} else {
-				// "null", "reserved"
+				// "reserved"
 				side_controllers_[side_num] = (**side)["controller"].to_string();
 			}
 		}
@@ -370,7 +441,7 @@ void game::transfer_side_control(const network::connection sock, const simple_wm
 				send_server_message("You can only (un)droid your own sides!", sock);
 			}
 			return;
-		} else if (cfg["controller"] != "human_ai" && cfg["controller"] != "human") {
+		} else if (cfg["controller"] != "ai" && cfg["controller"] != "human") {
 			std::stringstream msg;
 			msg << "Wrong controller type received: '" << cfg["controller"] << "'";
 			DBG_GAME << msg.str() << "\n";
@@ -445,12 +516,16 @@ void game::change_controller(const size_t side_num,
 	if (player_left && side_controllers_[side_num] == "ai") {
 		// Automatic AI side transfer.
 	} else if (controller.empty()) {
-		send_and_record_server_message(player_name + " takes control of side " + side + ".");
+		if (started_) {
+			send_and_record_server_message(player_name + " takes control of side " + side + ".");
+		}
 		side_controllers_[side_num] = "human";
 	} else {
-		send_and_record_server_message(player_name + (controller == "human_ai" ? " " : " un")
-				+ "droids side " + side + ".");
-		side_controllers_[side_num] = (controller == "human_ai" ? "ai" : "human");
+		if (started_) {
+			send_and_record_server_message(player_name + (controller == "ai" ? " " : " un")
+					+ "droids side " + side + ".");
+		}
+		side_controllers_[side_num] = (controller == "ai" ? "ai" : "human");
 	}
 
 	simple_wml::document response;
@@ -461,23 +536,24 @@ void game::change_controller(const size_t side_num,
 
 	// Tell everyone but the new player that this side's controller changed.
 	change.set_attr("controller", (side_controllers_[side_num] == "ai" ? "network_ai" : "network"));
+
 	send_data(response, sock);
+	if (started_) { //this is added instead of the if (started_) {...} below
+		simple_wml::document *record = new simple_wml::document;
+		simple_wml::node& recchg = record->root().add_child("change_controller");
+		recchg.set_attr_dup("side", side.c_str());
+		recchg.set_attr_dup("player", player_name.c_str());
+		recchg.set_attr_dup("controller", (side_controllers_[side_num] == "ai" ? "network_ai" : "network"));
+
+		record_data(record); //the purpose of these records is so that observers, replay viewers, get controller updates correctly
+	}
 
 	// Tell the new player that he controls this side now.
 	// Just don't send it when the player left the game. (The host gets the
 	// side_drop already.)
 	if (!player_left) {
-		change.set_attr("controller", (side_controllers_[side_num] == "ai" ? "human_ai" : "human"));
+		change.set_attr("controller", (side_controllers_[side_num] == "ai" ? "ai" : "human"));
 		wesnothd::send_to_one(response, sock);
-	}
-
-	// Update the level so observers who join get the new name. (The host handles level changes before game start.)
-	if (started_) {
-		const simple_wml::node::child_list& side_list = level_.root().children("side");
-		assert(side_num < side_list.size());
-		side_list[side_num]->set_attr_dup("current_player", player_name.c_str());
-		// Also update controller type (so savegames of observers have proper controllers)
-		side_list[side_num]->set_attr_dup("controller", side_controllers_[side_num].c_str());
 	}
 }
 
@@ -507,8 +583,8 @@ bool game::describe_slots() {
 	for(simple_wml::node::child_list::const_iterator it = side_list.begin(); it != side_list.end(); ++it, ++i) {
 		if (((**it)["allow_player"].to_bool(true) == false) || (**it)["controller"] == "null") {
 			num_sides--;
-		} else {
-			if (sides_[i] == 0) ++available_slots;
+		} else if (sides_[i] == 0) {
+			++available_slots;
 		}
 	}
 	char buf[50];
@@ -724,7 +800,7 @@ void game::unban_user(const simple_wml::node& unban,
 
 void game::process_message(simple_wml::document& data, const player_map::iterator user) {
 	if (owner_ == 0) {
-		ERR_GAME << "No owner in game::process_message\n";
+		ERR_GAME << "No owner in game::process_message" << std::endl;
 	}
 
 	simple_wml::node* const message = data.root().child("message");
@@ -742,6 +818,25 @@ bool game::is_legal_command(const simple_wml::node& command, bool is_player) {
 	if (!command.one_child()) return false;
 	// Chatting is never an illegal command.
 	if (command.child("speak")) return true;
+	/*
+		assume the following situation: there are 2 sides, its side 1's turn, side 1 has a very slow pc, the following wml is executed:
+
+		[get_global_variable]
+			namespace=my_addon
+			from_global=my_variable_name1
+			to_local=foo1
+			side=2
+		[/get_global_variable]
+		[get_global_variable]
+			namespace=my_addon
+			from_global=my_variable_name2
+			to_local=foo2
+			side=2
+		[/get_global_variable]
+		after the first [get_global_variable], both clients run the event simultaniously,
+		if player 1's pc is much faster side 2 sends the second [global_variable] before it is required on side 1 and the server doesnt accept it.
+		thats why i deleted the foolowing lines.
+
 	if (is_player && command.child("global_variable")) {
 		const simple_wml::node *gvar = (command.child("global_variable"));
 		if ((*gvar)["side"].to_int() == global_wait_side_) {
@@ -749,6 +844,13 @@ bool game::is_legal_command(const simple_wml::node& command, bool is_player) {
 			return true;
 		}
 		return false;
+	}
+	*/
+
+	if (is_player && command.has_attr("dependent") /*&& command.has_attr("from_side")*/)
+		//AKA it's generated by get_user_input for example [global_variable]
+	{
+		return true;
 	}
 	if (is_player
 	&& (command.child("label")
@@ -820,7 +922,25 @@ bool game::process_turn(simple_wml::document& data, const player_map::const_iter
 					}
 				}
 			}
-		} else if (is_current_player(user->first) && (**command).child("end_turn")) {
+		}
+		else if((**command).has_attr("from_side"))
+		{
+			if((**command)["from_side"] == "server")
+			{
+				//this could mean someone wants to cheat.
+				(**command).set_attr("side_invalid", "true");
+			}
+			else
+			{
+				int from_side = (**command)["from_side"].to_int() - 1;
+				if(from_side < 0 || static_cast<unsigned int>(from_side) >= sides_.size() ||sides_[from_side] != user->first)
+				{
+					//this could mean someone wants to cheat.
+					(**command).set_attr("side_invalid", "true");
+				}
+			}
+		}
+		else if (is_current_player(user->first) && (**command).child("end_turn")) {
 			turn_ended = end_turn();
 		}
 		++index;
@@ -890,6 +1010,23 @@ bool game::process_turn(simple_wml::document& data, const player_map::const_iter
 	return turn_ended;
 }
 
+void game::require_random(const simple_wml::document &/*data*/, const player_map::iterator /*user*/)
+{
+	// note, that during end turn events, it's side=1 for the server but side= side_count() on the clients.
+
+	int seed = rand() & 0x7FFFFFFF;
+	simple_wml::document* mdata = new simple_wml::document;
+	simple_wml::node& turn = mdata->root().add_child("turn");
+	simple_wml::node& command = turn.add_child("command");
+	simple_wml::node& random_seed = command.add_child("random_seed");
+	random_seed.set_attr_int("new_seed",seed);
+	command.set_attr("from_side", "server");
+	command.set_attr("dependent", "yes");
+
+	send_data(*mdata, 0, "game replay");
+	record_data(mdata);
+
+}
 void game::process_whiteboard(simple_wml::document& data, const player_map::const_iterator user)
 {
 	if(!started_ || !is_player(user->first))
@@ -1091,6 +1228,8 @@ bool game::remove_player(const network::connection player, const bool disconnect
 		drop.root().set_attr("side_drop", side_drop.c_str());
 		drop.root().set_attr("controller", side_controllers_[side_num].c_str());
 
+		DBG_GAME << "*** sending side drop: \n" << drop.output() << std::endl;
+
 		wesnothd::send_to_one(drop, owner_);
 	}
 	if (ai_transfer) send_and_record_server_message("AI sides transferred to host.");
@@ -1120,10 +1259,54 @@ void game::send_user_list(const network::connection exclude) const {
 	send_data(cfg, exclude);
 }
 
-void game::load_next_scenario(const player_map::const_iterator user) const {
+void game::load_next_scenario(const player_map::const_iterator user) {
 	send_server_message_to_all(user->second.name() + " advances to the next scenario", user->first);
 	simple_wml::document cfg_scenario;
-	level_.root().copy_into(cfg_scenario.root().add_child("next_scenario"));
+	simple_wml::node & next_scen = cfg_scenario.root().add_child("next_scenario");
+	level_.root().copy_into(next_scen);
+
+	const simple_wml::node::child_list & sides = next_scen.children("side");
+
+	DBG_GAME << "****\n loading next scenario for a client. sides info = " << std::endl;
+	DBG_GAME << debug_sides_info() << std::endl;
+	DBG_GAME << "****" << std::endl;
+
+	for(simple_wml::node::child_list::const_iterator s = sides.begin(); s != sides.end(); ++s) {
+		if ((**s)["controller"] != "null") {
+			int side_num = (**s)["side"].to_int() - 1;
+
+			if (sides_[side_num] == 0) {
+				sides_[side_num] = owner_;
+				std::stringstream msg;
+				msg << "Side "  << side_num + 1 << " had no controller while a client was loading next scenario! The host was assigned control.";
+				LOG_GAME << msg.str() << " (game id: " << id_ << ")\n";
+				send_and_record_server_message(msg.str());
+			} else if (sides_[side_num] == user->first) {
+				if (side_controllers_[side_num] == "human") {
+					(*s)->set_attr("controller", "human");
+				} else if (side_controllers_[side_num] == "ai") {
+					(*s)->set_attr("controller", "ai");
+				} else {
+					std::stringstream msg;
+					msg << "Side " << side_num + 1 << " had unexpected side_controller = " << side_controllers_[side_num] << " on server side.";
+					LOG_GAME << msg.str() << " (game id: " << id_ << ")\n";
+					send_and_record_server_message(msg.str());
+				}
+			} else {
+				if (side_controllers_[side_num] == "human") {
+					(*s)->set_attr("controller", "network");
+				} else if (side_controllers_[side_num] == "ai") {
+					(*s)->set_attr("controller", "network_ai");
+				} else {
+					std::stringstream msg;
+					msg << "Side " << side_num + 1 << " had unexpected side_controller = " << side_controllers_[side_num] << " on server side.";
+					LOG_GAME << msg.str() << " (game id: " << id_ << ")\n";
+					send_and_record_server_message(msg.str());
+				}
+			}
+		}
+	}
+
 	if (!wesnothd::send_to_one(cfg_scenario, user->first)) return;
 	// Send the player the history of the game to-date.
 	send_history(user->first);
@@ -1281,7 +1464,10 @@ void game::save_replay() {
 		<< "mp_game_title=\"" << name_ << "\"\n"
 		<< "random_seed=\"" << level_["random_seed"] << "\"\n"
 		<< "version=\"" << level_["version"] << "\"\n"
-		<< "[replay]\n" << replay_commands << "[/replay]\n"
+		<< "[replay]\n"
+		<< "\t[command]\n\t\t[start]\n\t\t[/start]\n\t[/command]\n" //this is required by gfgtdf's sync mechanism, in PR 121
+		<< replay_commands
+		<< "[/replay]\n"
 		<< "[replay_start]\n" << level_.output() << "[/replay_start]\n";
 
 		name << " (" << id_ << ").bz2";
@@ -1297,7 +1483,7 @@ void game::save_replay() {
 		(*os) << replay.output_compressed(true);
 
 		if (!os->good()) {
-			ERR_GAME << "Could not save replay! (" << filename << ")\n";
+			ERR_GAME << "Could not save replay! (" << filename << ")" << std::endl;
 		}
 	} catch (simple_wml::error& e) {
 		WRN_CONFIG << __func__ << ": simple_wml error: " << e.message << std::endl;
@@ -1379,6 +1565,22 @@ std::string game::debug_player_info() const {
 		result << info->second.name().c_str() << "\n";
 	}
 	result << "player_info_: end\n";*/
+	return result.str();
+}
+
+std::string game::debug_sides_info() const {
+	std::stringstream result;
+	result << "game id: " << id_ << "\n";
+	const simple_wml::node::child_list & sides = level_.root().children("side");
+
+	result << "\t\t level, server\n";
+	for(simple_wml::node::child_list::const_iterator s = sides.begin(); s != sides.end(); ++s) {
+		result << "side " << (**s)["side"].to_int() << " :\t" << (**s)["controller"].to_string()
+			<< "\t, " << side_controllers_[(**s)["side"].to_int() - 1]
+			<< "\t( " << sides_[(**s)["side"].to_int()-1] << ",\t"
+			<< (**s)["current_player"].to_string() << " )\n";
+	}
+
 	return result.str();
 }
 

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Yurii Chernyi <terraninfo@terraninfo.net>
+   Copyright (C) 2009 - 2014 by Yurii Chernyi <terraninfo@terraninfo.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -79,7 +79,7 @@ bool stage_unit_formulas::do_play_stage()
 						priority = 0;
 					} catch(type_error& e) {
 						priority = 0;
-						ERR_AI << "formula type error while evaluating unit priority formula  " << e.message << "\n";
+						ERR_AI << "formula type error while evaluating unit priority formula  " << e.message << std::endl;
 					}
 				}
 

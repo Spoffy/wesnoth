@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Mark de Wever <koraq@xs4all.nl>
+   Copyright (C) 2009 - 2014 by Mark de Wever <koraq@xs4all.nl>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -95,7 +95,7 @@ inline To lexical_cast(From value)
 }
 
 /** Thrown when a lexical_cast fails. */
-struct bad_lexical_cast {};
+struct bad_lexical_cast : std::exception {};
 
 namespace implementation {
 

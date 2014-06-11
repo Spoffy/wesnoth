@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010 - 2013 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
+ Copyright (C) 2010 - 2014 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
  Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
  This program is free software; you can redistribute it and/or modify
@@ -34,6 +34,7 @@
 #include "utility.hpp"
 
 #include "arrow.hpp"
+#include "game_board.hpp"
 #include "play_controller.hpp"
 #include "resources.hpp"
 #include "unit_map.hpp"
@@ -58,9 +59,11 @@ highlighter::highlighter(unit_map& unit_map, side_actions_ptr side_actions)
 
 highlighter::~highlighter()
 {
+	try {
 	if(resources::screen && owner_unit_) {
 		unhighlight();
 	}
+	} catch (...) {}
 }
 
 void highlighter::set_mouseover_hex(const map_location& hex)

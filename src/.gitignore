@@ -21,6 +21,7 @@ libwesnoth-game.a
 libwesnothd.a
 libwesnoth.a
 libwesnoth-lua.a
+libwesnoth-sdl.a
 revision-stamp
 revision.hpp
 tags
@@ -31,3 +32,5 @@ wmlscope
 wmlindent
 config.h
 revision.dummy
+#cmake/win32/MSVC:
+*.vcproj

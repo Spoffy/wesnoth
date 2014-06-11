@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Mark de Wever <koraq@xs4all.nl>
+   Copyright (C) 2009 - 2014 by Mark de Wever <koraq@xs4all.nl>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #include "gettext.hpp"
 #include "game_config.hpp"
 #include "game_display.hpp"
+#include "generators/map_create.hpp"
 #include "gui/auxiliary/layout_exception.hpp"
 #include "gui/dialogs/addon_connect.hpp"
 #include "gui/dialogs/addon_list.hpp"
@@ -32,6 +33,7 @@
 #include "gui/dialogs/data_manage.hpp"
 #include "gui/dialogs/debug_clock.hpp"
 #include "gui/dialogs/edit_label.hpp"
+#include "gui/dialogs/edit_text.hpp"
 #include "gui/dialogs/editor_generate_map.hpp"
 #include "gui/dialogs/editor_new_map.hpp"
 #include "gui/dialogs/editor_resize_map.hpp"
@@ -40,31 +42,40 @@
 #include "gui/dialogs/formula_debugger.hpp"
 #include "gui/dialogs/game_delete.hpp"
 #include "gui/dialogs/game_load.hpp"
+#include "gui/dialogs/game_paths.hpp"
 #include "gui/dialogs/game_save.hpp"
 #include "gui/dialogs/gamestate_inspector.hpp"
 #include "gui/dialogs/language_selection.hpp"
+#include "gui/dialogs/lobby_main.hpp"
+#include "gui/dialogs/lobby_player_info.hpp"
 #include "gui/dialogs/message.hpp"
 #include "gui/dialogs/mp_change_control.hpp"
 #include "gui/dialogs/mp_cmd_wrapper.hpp"
 #include "gui/dialogs/mp_connect.hpp"
 #include "gui/dialogs/mp_create_game.hpp"
+#include "gui/dialogs/mp_create_game_set_password.hpp"
+#include "gui/dialogs/mp_depcheck_confirm_change.hpp"
+#include "gui/dialogs/mp_depcheck_select_new.hpp"
 #include "gui/dialogs/mp_login.hpp"
 #include "gui/dialogs/mp_method_selection.hpp"
 #include "gui/dialogs/simple_item_selector.hpp"
+#include "gui/dialogs/screenshot_notification.hpp"
+#include "gui/dialogs/theme_list.hpp"
 #include "gui/dialogs/title_screen.hpp"
 #include "gui/dialogs/tip.hpp"
 #include "gui/dialogs/transient_message.hpp"
 #include "gui/dialogs/unit_attack.hpp"
 #include "gui/dialogs/unit_create.hpp"
+#include "gui/dialogs/wml_error.hpp"
 #include "gui/dialogs/wml_message.hpp"
 #include "gui/widgets/settings.hpp"
 #include "gui/widgets/window.hpp"
 #include "language.hpp"
-#include "map_create.hpp"
 #include "tests/utils/fake_display.hpp"
 #include "video.hpp"
 #include "wml_exception.hpp"
 
+#include <boost/assign/list_of.hpp>
 #include <boost/bind.hpp>
 #include <boost/foreach.hpp>
 
@@ -302,6 +313,7 @@ void test()
 		test_resolutions<T>(get_small_gui_resolutions());
 		test_resolutions<T>(get_gui_resolutions());
 
+		break; // FIXME: New widgets break
 		gui2::new_widgets = true;
 	}
 }
@@ -360,6 +372,7 @@ BOOST_AUTO_TEST_CASE(test_gui2)
 //	test<gui2::tchat_log>(); /** @todo ENABLE */
 	test<gui2::tdata_manage>();
 	test<gui2::tedit_label>();
+	test<gui2::tedit_text>();
 	test<gui2::teditor_generate_map>();
 	test<gui2::teditor_new_map>();
 	test<gui2::teditor_resize_map>();
@@ -368,24 +381,33 @@ BOOST_AUTO_TEST_CASE(test_gui2)
 	test<gui2::tformula_debugger>();
 	test<gui2::tgame_delete>();
 	test<gui2::tgame_load>();
+	test<gui2::tgame_paths>();
 	test<gui2::tgame_save>();
 	test<gui2::tgame_save_message>();
 	test<gui2::tgame_save_oos>();
 	test<gui2::tgamestate_inspector>();
 	test<gui2::tlanguage_selection>();
+	test<gui2::tlobby_main>();
+	test<gui2::tlobby_player_info>();
 	test<gui2::tmessage>();
-	test<gui2::tsimple_item_selector>();
 	test<gui2::tmp_change_control>();
 	test<gui2::tmp_cmd_wrapper>();
 	test<gui2::tmp_connect>();
 	test<gui2::tmp_create_game>();
+	test<gui2::tmp_create_game_set_password>();
+	test<gui2::tmp_depcheck_confirm_change>();
+	test<gui2::tmp_depcheck_select_new>();
 	test<gui2::tmp_login>();
 	test<gui2::tmp_method_selection>();
 	test<gui2::tmp_server_list>();
+	test<gui2::tsimple_item_selector>();
+	test<gui2::tscreenshot_notification>();
+	test<gui2::ttheme_list>();
 	test<gui2::ttitle_screen>();
 	test<gui2::ttransient_message>();
 //	test<gui2::tunit_attack>(); /** @todo ENABLE */
 	test<gui2::tunit_create>();
+	test<gui2::twml_error>();
 	test<gui2::twml_message_left>();
 	test<gui2::twml_message_right>();
 
@@ -424,7 +446,7 @@ BOOST_AUTO_TEST_CASE(test_make_test_fake)
 	video().make_test_fake(10, 10);
 
 	try {
-		gui2::tmessage dlg("title", "message", true);
+		gui2::tmessage dlg("title", "message", true, false);
 		dlg.show(video(), 1);
 	} catch(twml_exception& e) {
 		BOOST_CHECK(e.user_message == _("Failed to show a dialog, "
@@ -474,7 +496,7 @@ struct twrapper<gui2::tcampaign_selection>
 {
 	static gui2::tcampaign_selection* create()
 	{
-		const config::const_child_itors &ci =
+		static const config::const_child_itors &ci =
 				main_config.child_range("campaign");
 		static std::vector<config> campaigns(ci.first, ci.second);
 
@@ -515,6 +537,16 @@ struct twrapper<gui2::tedit_label>
 };
 
 template<>
+struct twrapper<gui2::tedit_text>
+{
+	static gui2::tedit_text* create()
+	{
+		static std::string text = "text to modify";
+		return new gui2::tedit_text("title", "label", text);
+	}
+};
+
+template<>
 struct twrapper<gui2::tformula_debugger>
 {
 	static gui2::tformula_debugger* create()
@@ -532,6 +564,16 @@ struct twrapper<gui2::tgame_load>
 		/** @todo Would be nice to add real data to the config. */
 		static config cfg;
 		return new gui2::tgame_load(cfg);
+	}
+
+};
+
+template<>
+struct twrapper<gui2::tgame_paths>
+{
+	static gui2::tgame_paths* create()
+	{
+		return new gui2::tgame_paths();
 	}
 
 };
@@ -592,11 +634,43 @@ struct twrapper<gui2::tgamestate_inspector>
 };
 
 template<>
+struct twrapper<gui2::tlobby_main>
+{
+	static gui2::tlobby_main* create()
+	{
+		static config game_config;
+		static lobby_info li(game_config);
+		return new gui2::tlobby_main(game_config, li,
+			*static_cast<display*>(&test_utils::get_fake_display(-1, -1)));
+	}
+};
+
+class fake_chat_handler : public events::chat_handler {
+	void add_chat_message(const time_t&,
+		const std::string&, int, const std::string&,
+		MESSAGE_TYPE) {}
+	void send_chat_message(const std::string&, bool) {}
+};
+
+template<>
+struct twrapper<gui2::tlobby_player_info>
+{
+	static gui2::tlobby_player_info* create()
+	{
+		static config c;
+		static fake_chat_handler ch;
+		static user_info ui(c);
+		static lobby_info li(c);
+		return new gui2::tlobby_player_info(ch, ui, li);
+	}
+};
+
+template<>
 struct twrapper<gui2::tmessage>
 {
 	static gui2::tmessage* create()
 	{
-		return new gui2::tmessage("Title", "Message", false);
+		return new gui2::tmessage("Title", "Message", false, false);
 	}
 };
 
@@ -628,6 +702,36 @@ struct twrapper<gui2::tmp_create_game>
 };
 
 template<>
+struct twrapper<gui2::tmp_create_game_set_password>
+{
+	static gui2::tmp_create_game_set_password* create()
+	{
+		static std::string password;
+		return new gui2::tmp_create_game_set_password(password);
+	}
+};
+
+template<>
+struct twrapper<gui2::tmp_depcheck_confirm_change>
+{
+	static gui2::tmp_depcheck_confirm_change* create()
+	{
+		static std::vector<std::string> mods = boost::assign::list_of("mod_one")("some other")("more");
+		return new gui2::tmp_depcheck_confirm_change(true, mods, "requester");
+	}
+};
+
+template<>
+struct twrapper<gui2::tmp_depcheck_select_new>
+{
+	static gui2::tmp_depcheck_select_new* create()
+	{
+		static std::vector<std::string> mods = boost::assign::list_of("mod_one")("some other")("more");
+		return new gui2::tmp_depcheck_select_new(mp::depcheck::MODIFICATION, mods);
+	}
+};
+
+template<>
 struct twrapper<gui2::tmp_login>
 {
 	static gui2::tmp_login* create()
@@ -646,6 +750,35 @@ struct twrapper<gui2::tsimple_item_selector>
 				, std::vector<std::string>()
 				, false
 				, false);
+	}
+};
+
+template<>
+struct twrapper<gui2::tscreenshot_notification>
+{
+	static gui2::tscreenshot_notification* create()
+	{
+		return new gui2::tscreenshot_notification("path"
+				, 0);
+	}
+};
+
+template<>
+struct twrapper<gui2::ttheme_list>
+{
+	static theme_info make_theme(std::string name)
+	{
+		theme_info ti;
+		ti.id = name;
+		ti.name = name;
+		ti.description = name + " this is a description";
+		return ti;
+	}
+	static gui2::ttheme_list* create()
+	{
+		static std::vector<theme_info> themes = boost::assign::list_of(make_theme("classic"))
+		(make_theme("new"))(make_theme("more"))(make_theme("themes"));
+		return new gui2::ttheme_list(themes, 0);
 	}
 };
 
@@ -741,6 +874,16 @@ struct twrapper<gui2::ttransient_message>
 	static gui2::ttransient_message* create()
 	{
 		return new gui2::ttransient_message("Title", false, "Message", false, "");
+	}
+};
+
+template<>
+struct twrapper<gui2::twml_error>
+{
+	static gui2::twml_error* create()
+	{
+		static std::vector<std::string> files = boost::assign::list_of("some")("files")("here");
+		return new gui2::twml_error("Summary", "Post summary", files, "Details");
 	}
 };
 

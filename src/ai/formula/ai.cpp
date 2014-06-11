@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2008 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2008 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -30,6 +30,7 @@
 #include "../manager.hpp"
 
 #include "../../callable_objects.hpp"
+#include "../../game_board.hpp"
 #include "../../game_display.hpp"
 #include "../../formula_debugger.hpp"
 #include "../../log.hpp"
@@ -178,7 +179,7 @@ pathfind::plain_route formula_ai::shortest_path_calculator(const map_location &s
     map_location destination = dst;
 
     unit_map &units_ = *resources::units;
-    pathfind::shortest_path_calculator calc(*unit_it, current_team(), *resources::teams, *resources::game_map);
+    pathfind::shortest_path_calculator calc(*unit_it, current_team(), *resources::teams, resources::gameboard->map());
 
     unit_map::const_iterator dst_un = units_.find(destination);
 
@@ -193,7 +194,7 @@ pathfind::plain_route formula_ai::shortest_path_calculator(const map_location &s
         get_adjacent_tiles(destination,adj);
 
         for(size_t n = 0; n != 6; ++n) {
-                if(resources::game_map->on_board(adj[n]) == false) {
+                if(resources::gameboard->map().on_board(adj[n]) == false) {
                         continue;
                 }
 
@@ -220,7 +221,7 @@ pathfind::plain_route formula_ai::shortest_path_calculator(const map_location &s
     }
 
     pathfind::plain_route route = pathfind::a_star_search(src, destination, 1000.0, &calc,
-            resources::game_map->w(), resources::game_map->h(), &allowed_teleports);
+            resources::gameboard->map().w(), resources::gameboard->map().h(), &allowed_teleports);
 
     return route;
 }
@@ -284,7 +285,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 
 			if ( !move_result->is_ok() ) {
 				if( move ) {
-					LOG_AI << "ERROR #" << move_result->get_status() << " while executing 'move' formula function\n\n";
+					LOG_AI << "ERROR #" << move_result->get_status() << " while executing 'move' formula function\n" << std::endl;
 
 					if(safe_call) {
 						//safe_call was called, prepare error information
@@ -292,7 +293,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 									move_result->get_status(), move_result->get_unit_location()));
 					}
 				} else {
-					LOG_AI << "ERROR #" << move_result->get_status() << " while executing 'move_partial' formula function\n\n";
+					LOG_AI << "ERROR #" << move_result->get_status() << " while executing 'move_partial' formula function\n" << std::endl;
 
 					if(safe_call) {
 						//safe_call was called, prepare error information
@@ -314,7 +315,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 
 				if (!move_result->is_ok()) {
 					//move part failed
-					LOG_AI << "ERROR #" << move_result->get_status() << " while executing 'attack' formula function\n\n";
+					LOG_AI << "ERROR #" << move_result->get_status() << " while executing 'attack' formula function\n" << std::endl;
 
 					if(safe_call) {
 						//safe_call was called, prepare error information
@@ -331,7 +332,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 				if (!attack_result->is_ok()) {
 					//attack failed
 
-					LOG_AI << "ERROR #" << attack_result->get_status() << " while executing 'attack' formula function\n\n";
+					LOG_AI << "ERROR #" << attack_result->get_status() << " while executing 'attack' formula function\n" << std::endl;
 
 					if(safe_call) {
 						//safe_call was called, prepare error information
@@ -435,7 +436,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 				made_moves.push_back(action);
 			} else {
 				//too many calls in a row - possible infinite loop
-				ERR_AI << "ERROR #" << 5001 << " while executing 'set_var' formula function\n";
+				ERR_AI << "ERROR #" << 5001 << " while executing 'set_var' formula function" << std::endl;
 
 				if( safe_call )
 					error = variant(new safe_call_result(set_var_command, 5001));
@@ -457,7 +458,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 				unit->add_formula_var(set_unit_var_command->key(), set_unit_var_command->value());
 				made_moves.push_back(action);
 			} else {
-				ERR_AI << "ERROR #" << status << " while executing 'set_unit_var' formula function\n";
+				ERR_AI << "ERROR #" << status << " while executing 'set_unit_var' formula function" << std::endl;
 				if(safe_call)
 				    error = variant(new safe_call_result(set_unit_var_command,
 									status));
@@ -475,7 +476,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 				made_moves.push_back(action);
 			} else {
 				//too many calls in a row - possible infinite loop
-				ERR_AI << "ERROR #" << 5001 << " while executing 'continue' formula keyword\n";
+				ERR_AI << "ERROR #" << 5001 << " while executing 'continue' formula keyword" << std::endl;
 
 				if( safe_call )
 					error = variant(new safe_call_result(NULL, 5001));
@@ -501,7 +502,7 @@ variant formula_ai::execute_variant(const variant& var, ai_context &ai_, bool co
 		} else {
 			//this information is unneded when evaluating formulas form commandline
 			if (!commandline) {
-				ERR_AI << "UNRECOGNIZED MOVE: " << action.to_debug_string() << "\n";
+				ERR_AI << "UNRECOGNIZED MOVE: " << action.to_debug_string() << std::endl;
 			}
 		}
 
@@ -821,10 +822,10 @@ variant formula_ai::get_value(const std::string& key) const
 		return get_keeps();
 	} else if(key == "map")
 	{
-		return variant(new gamemap_callable(*resources::game_map));
+		return variant(new gamemap_callable(resources::gameboard->map()));
 	} else if(key == "villages")
 	{
-		return villages_from_set(resources::game_map->villages());
+		return villages_from_set(resources::gameboard->map().villages());
 	} else if(key == "villages_of_side")
 	{
 		std::vector<variant> vars;
@@ -844,7 +845,7 @@ variant formula_ai::get_value(const std::string& key) const
 
 	} else if(key == "enemy_and_unowned_villages")
 	{
-		return villages_from_set(resources::game_map->villages(), &current_team().villages());
+		return villages_from_set(resources::gameboard->map().villages(), &current_team().villages());
 	}
 
 	return variant();
@@ -886,14 +887,14 @@ variant formula_ai::get_keeps() const
 {
 	if(keeps_cache_.is_null()) {
 		std::vector<variant> vars;
-		for(size_t x = 0; x != size_t(resources::game_map->w()); ++x) {
-			for(size_t y = 0; y != size_t(resources::game_map->h()); ++y) {
+		for(size_t x = 0; x != size_t(resources::gameboard->map().w()); ++x) {
+			for(size_t y = 0; y != size_t(resources::gameboard->map().h()); ++y) {
 				const map_location loc(x,y);
-				if(resources::game_map->is_keep(loc)) {
+				if(resources::gameboard->map().is_keep(loc)) {
 					map_location adj[6];
 					get_adjacent_tiles(loc,adj);
 					for(size_t n = 0; n != 6; ++n) {
-						if(resources::game_map->is_castle(adj[n])) {
+						if(resources::gameboard->map().is_castle(adj[n])) {
 							vars.push_back(variant(new location_callable(loc)));
 							break;
 						}

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Eugen Jiresch
+   Copyright (C) 2009 - 2014 by Eugen Jiresch
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -15,41 +15,45 @@
 #include "tod_manager.hpp"
 #include "wml_exception.hpp"
 #include "gettext.hpp"
+#include "display_context.hpp"
 #include "formula_string_utils.hpp"
 #include "gamestatus.hpp"
 #include "log.hpp"
 #include "map.hpp"
 #include "play_controller.hpp"
+#include "random_new.hpp"
 #include "resources.hpp"
 #include "unit.hpp"
 #include "unit_abilities.hpp"
 
 #include <boost/foreach.hpp>
+#include <boost/range/adaptors.hpp>
+#include <boost/range/algorithm.hpp>
+#include <boost/lambda/bind.hpp>
+#include <boost/lambda/lambda.hpp>
+#include <boost/bind.hpp>
 
 static lg::log_domain log_engine("engine");
 #define LOG_NG LOG_STREAM(info, log_engine)
 
-tod_manager::tod_manager(const config& scenario_cfg, const int num_turns):
+tod_manager::tod_manager(const config& scenario_cfg):
 	savegame_config(),
 	currentTime_(0),
 	times_(),
 	areas_(),
-	turn_(1),
-	num_turns_(num_turns)
+	turn_(scenario_cfg["turn_at"].to_int(1)),
+	num_turns_(scenario_cfg["turns"].to_int(-1))
 {
-	const config::attribute_value& turn_at = scenario_cfg["turn_at"];
-	if(!turn_at.blank()) {
-		turn_ = turn_at.to_int(1);
-	}
+	// ? : operator doesn't work in this case.
+	if (scenario_cfg["current_time"].to_int(-17403) == -17403)
+		random_tod_ = scenario_cfg["random_start_time"];
+	else
+		random_tod_ = false;
 
 	time_of_day::parse_times(scenario_cfg,times_);
+	//We need to call parse_times before calculate_current_time because otherwise the first parameter will always be 0.
+	currentTime_ = calculate_current_time(times_.size(), turn_, scenario_cfg["current_time"].to_int(0), true);
 
-	currentTime_ = get_start_ToD(scenario_cfg);
-	//TODO:
-	//Very bad, since we're pretending to not modify the cfg. Needed to transfer the result
-	//to the network clients in a mp game, otherwise we have OOS.
-	config& non_const_config = const_cast<config&>(scenario_cfg);
-	non_const_config["current_tod"] = currentTime_;
 }
 
 tod_manager& tod_manager::operator=(const tod_manager& manager)
@@ -68,12 +72,47 @@ tod_manager& tod_manager::operator=(const tod_manager& manager)
 	return *this;
 }
 
+template <typename T>
+struct greater
+{
+	greater(T val) : value (val) {}
+	bool operator () (T v2)
+	{
+		return value < v2;
+	}
+
+	T value;
+};
+
+void tod_manager::resolve_random(random_new::rng& r)
+{
+	//process the random_start_time string, which can be boolean yes/no true/false or a
+	//comma-separated string of integers >= 1 referring to the times_ array indices
+	std::vector<int> output;
+	boost::copy( utils::split(random_tod_.str())
+		| boost::adaptors::transformed(boost::bind(lexical_cast_default<int, std::string>, _1 , 0))
+		| boost::adaptors::filtered(greater<int>(0))
+		, std::back_inserter(output) );
+
+	if(!output.empty())
+	{
+		int chosen = output[r.next_random() % output.size()];
+		currentTime_ = calculate_current_time(times_.size(), turn_, chosen, true);
+		r.next_random();
+	}
+	else if (random_tod_.to_bool(false))
+	{
+		currentTime_ = calculate_current_time(times_.size(), turn_, r.next_random(), true);
+	}
+	random_tod_ = false;
+}
 config tod_manager::to_config() const
 {
 	config cfg;
 	cfg["turn_at"] = turn_;
 	cfg["turns"] = num_turns_;
-	cfg["current_tod"] = currentTime_;
+	cfg["current_time"] = currentTime_;
+	cfg["random_start_time"] = random_tod_;
 
 	std::vector<time_of_day>::const_iterator t;
 	for(t = times_.begin(); t != times_.end(); ++t) {
@@ -92,6 +131,8 @@ config tod_manager::to_config() const
 			t->write(area.add_child("time"));
 		}
 		area["current_time"] = i->currentTime;
+		if (!i->id.empty())
+			area["id"] = i->id;
 	}
 	return cfg;
 }
@@ -101,12 +142,45 @@ const time_of_day& tod_manager::get_previous_time_of_day() const
 	return get_time_of_day_turn(times_, turn_ - 1, currentTime_);
 }
 
+int tod_manager::get_current_area_time(int index) const {
+	assert(index < static_cast<int>(areas_.size()) );
+	return areas_[index].currentTime;
+}
+
+int tod_manager::get_current_time(const map_location& loc) const
+{
+	if ( loc != map_location::null_location() ) {
+		for ( std::vector<area_time_of_day>::const_reverse_iterator
+				i = areas_.rbegin(), i_end = areas_.rend(); i != i_end; ++i )
+		{
+			if (i->hexes.find(loc) != i->hexes.end())
+				return i->currentTime;
+		}
+	}
+
+	return currentTime_;
+}
+
+const std::vector<time_of_day>& tod_manager::times(const map_location& loc) const
+{
+	if ( loc != map_location::null_location() ) {
+		for ( std::vector<area_time_of_day>::const_reverse_iterator
+				i = areas_.rbegin(), i_end = areas_.rend(); i != i_end; ++i )
+		{
+			if (i->hexes.find(loc) != i->hexes.end())
+				return i->times;
+		}
+	}
+
+	return times_;
+}
+
 const time_of_day& tod_manager::get_time_of_day(const map_location& loc, int n_turn) const
 {
 	if(n_turn == 0)
 		n_turn = turn_;
 
-	if ( loc != map_location::null_location )
+	if ( loc != map_location::null_location() )
 	{
 		for ( std::vector<area_time_of_day>::const_reverse_iterator
 		      i = areas_.rbegin(), i_end = areas_.rend(); i != i_end; ++i )
@@ -121,7 +195,7 @@ const time_of_day& tod_manager::get_time_of_day(const map_location& loc, int n_t
 
 const time_of_day tod_manager::get_illuminated_time_of_day(const map_location& loc, int for_turn) const
 {
-	const gamemap& map = *resources::game_map;
+	const gamemap& map = resources::disp_context->map();
 	const unit_map& units = *resources::units;
 
 	// get ToD ignoring illumination
@@ -196,7 +270,7 @@ void tod_manager::replace_schedule(const config& time_cfg)
 {
 	times_.clear();
 	time_of_day::parse_times(time_cfg,times_);
-	currentTime_ = 0;
+	currentTime_ = time_cfg["current_time"].to_int(0);
 }
 
 void tod_manager::replace_schedule(const std::vector<time_of_day>& schedule)
@@ -205,7 +279,22 @@ void tod_manager::replace_schedule(const std::vector<time_of_day>& schedule)
 	currentTime_ = 0;
 }
 
+void tod_manager::replace_area_locations(int area_index, const std::set<map_location>& locs) {
+	assert(area_index < static_cast<int>(areas_.size()));
+	areas_[area_index].hexes = locs;
+}
 
+void tod_manager::replace_local_schedule(const std::vector<time_of_day>& schedule, int area_index)
+{
+	assert(area_index < static_cast<int>(areas_.size()));
+	areas_[area_index].times = schedule;
+	areas_[area_index].currentTime = 0;
+}
+
+void tod_manager::set_area_id(int area_index, const std::string& id) {
+	assert(area_index < static_cast<int>(areas_.size()));
+	areas_[area_index].id = id;
+}
 
 std::vector<std::string> tod_manager::get_area_ids() const
 {
@@ -214,6 +303,15 @@ std::vector<std::string> tod_manager::get_area_ids() const
 		areas.push_back(area.id);
 	}
 	return areas;
+}
+
+const std::set<map_location>& tod_manager::get_area_by_id(const std::string& id) const
+{
+	BOOST_FOREACH(const area_time_of_day& area, areas_) {
+		if (area.id == id)
+			return area.hexes;
+	}
+	return areas_[0].hexes;
 }
 
 const std::set<map_location>& tod_manager::get_area_by_index(int index) const
@@ -229,8 +327,8 @@ void tod_manager::add_time_area(const config& cfg)
 	area.xsrc = cfg["x"].str();
 	area.ysrc = cfg["y"].str();
 	area.currentTime = cfg["current_time"].to_int(0);
-	std::vector<map_location> const& locs = parse_location_range(area.xsrc, area.ysrc, true);
-	std::copy(locs.begin(), locs.end(), std::inserter(area.hexes, area.hexes.end()));
+	std::vector<map_location> const& locs (parse_location_range(area.xsrc, area.ysrc, true));
+	area.hexes.insert(locs.begin(), locs.end());
 	time_of_day::parse_times(cfg, area.times);
 }
 
@@ -241,6 +339,7 @@ void tod_manager::add_time_area(const std::string& id, const std::set<map_locati
 	area_time_of_day& area = areas_.back();
 	area.id = id;
 	area.hexes = locs;
+	area.currentTime = time_cfg["current_time"].to_int(0);
 	time_of_day::parse_times(time_cfg, area.times);
 }
 
@@ -261,34 +360,10 @@ void tod_manager::remove_time_area(const std::string& area_id)
 	}
 }
 
-int tod_manager::get_start_ToD(const config &level) const
+void tod_manager::remove_time_area(int area_index)
 {
-	const config::attribute_value& current_tod = level["current_tod"];
-	if (!current_tod.blank())
-	{
-		return calculate_current_time(times_.size(), turn_, current_tod.to_int(0), true);
-	}
-
-	const int default_result = calculate_current_time(times_.size(), turn_, currentTime_);
-
-	const config::attribute_value& cfg_random_start_time = level["random_start_time"];
-	if(!cfg_random_start_time.blank()) {
-		const std::string& random_start_time = cfg_random_start_time.str();
-		//TODO:
-		//Here there is danger of OOS (bug #15948)
-		//But this randomization is needed on the other hand to make the "random start time" option
-		//in the mp game selection screen work.
-
-		//process the random_start_time string, which can be boolean yes/no true/false or a
-		//comma-separated string of integers >= 1 referring to the times_ array indices
-		const std::vector<std::string>& random_start_time_strings = utils::split(random_start_time);
-		const int random_index = calculate_current_time(random_start_time_strings.size(), turn_, rand(), true);
-		const int given_current_time = lexical_cast_default<int, std::string>(random_start_time_strings[random_index], 0) - 1;
-		if(given_current_time >= 0) return calculate_current_time(times_.size(), turn_, given_current_time, true);
-		if(cfg_random_start_time.to_bool(false)) return calculate_current_time(times_.size(), turn_, rand(), true);
-	}
-
-	return default_result;
+	assert(area_index < static_cast<int>(areas_.size()));
+	areas_.erase(areas_.begin() + area_index);
 }
 
 const time_of_day& tod_manager::get_time_of_day_turn(const std::vector<time_of_day>& times, int nturn, const int current_time) const
@@ -338,6 +413,7 @@ int tod_manager::calculate_current_time(
 	const int current_time,
 	const bool only_to_allowed_range) const
 {
+	if (number_of_times == 0) return 0;
 	int new_current_time = 0;
 	if(only_to_allowed_range) new_current_time = current_time % number_of_times;
 	else new_current_time = (current_time + for_turn_number - turn_) % number_of_times;

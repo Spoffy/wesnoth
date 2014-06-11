@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2005 - 2013
+   Copyright (C) 2005 - 2014
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -27,16 +27,10 @@
 #include "multiplayer.hpp"
 #include "multiplayer_ui.hpp"
 #include "sound.hpp"
-#include "replay.hpp"
-#include "unit_id.hpp"
 #include "wml_separators.hpp"
 #include "formula_string_utils.hpp"
 
 #include <boost/foreach.hpp>
-
-static lg::log_domain log_engine("engine");
-#define LOG_NG LOG_STREAM(info, log_engine)
-#define ERR_NG LOG_STREAM(err, log_engine)
 
 static lg::log_domain log_config("config");
 #define ERR_CF LOG_STREAM(err, log_config)
@@ -46,7 +40,6 @@ static lg::log_domain log_network("network");
 #define ERR_NW LOG_STREAM(err, log_network)
 
 namespace {
-
 	/** The maximum number of messages in the chat history. */
 	const size_t max_messages = 256;
 
@@ -55,7 +48,7 @@ namespace {
 		user_menu_style() : gui::menu::imgsel_style("dialogs/selection", false,
 										   0x000000, 0x4a4440, 0x999999,
 										   0.0, 0.2, 0.2),
-										   item_size_(empty_rect)
+										   item_size_(sdl::empty_rect)
 		{}
 		virtual void init();
 		virtual SDL_Rect item_size(const std::string& /*item*/) const { return item_size_; }
@@ -77,122 +70,6 @@ namespace {
 } // anon namespace
 
 namespace mp {
-
-void check_response(network::connection res, const config& data)
-{
-	if(!res) {
-		throw network::error(_("Connection timed out"));
-	}
-
-	if (const config &err = data.child("error")) {
-		throw network::error(err["message"]);
-	}
-}
-
-void level_to_gamestate(config& level, game_state& state)
-{
-	//any replay data is only temporary and should be removed from
-	//the level data in case we want to save the game later
-	const config &replay_data = level.child("replay");
-	config replay_data_store;
-	if (replay_data) {
-		replay_data_store = replay_data;
-		LOG_NW << "setting replay\n";
-		state.replay_data = replay_data;
-		recorder = replay(replay_data_store);
-		if(!recorder.empty()) {
-			recorder.set_skip(false);
-			recorder.set_to_end();
-		}
-	}
-
-	carryover_info sides = carryover_info(state.carryover_sides_start);
-
-	n_unit::id_manager::instance().set_save_id(level["next_underlying_unit_id"]);
-	//set random
-	const config::attribute_value &seed = level["random_seed"];
-	if(!seed.empty()) {
-		const unsigned calls = level["random_calls"].to_unsigned();
-		sides.rng().seed_random(seed.to_int(42), calls);
-	} else {
-		ERR_NG << "No random seed found, random "
-			"events will probably be out of sync.\n";
-	}
-
-	//adds the starting pos to the level
-	if (!level.child("replay_start")) {
-		level.add_child("replay_start", level);
-		level.child("replay_start").remove_child("multiplayer", 0);
-	}
-	//this is important, if it does not happen, the starting position is missing and
-	//will be drawn from the snapshot instead (which is not what we want since we have
-	//all needed information here already)
-	state.replay_start() = level.child("replay_start");
-
-	level["campaign_type"] = "multiplayer";
-	state.classification().campaign_type = "multiplayer";
-	state.classification().completion = level["completion"].str();
-	state.classification().version = level["version"].str();
-
-	if (const config &vars = level.child("variables")) {
-		sides.set_variables(vars);
-	}
-	sides.get_wml_menu_items().set_menu_items(level);
-	state.mp_settings().set_from_config(level);
-
-	//Check whether it is a save-game by looking for snapshot data
-	const config &snapshot = level.child("snapshot");
-	const bool saved_game = snapshot && snapshot.child("side");
-
-	//It might be a MP campaign start-of-scenario save
-	//In this case, it's not entirely a new game, but not a save, either
-	//Check whether it is no savegame and the starting_pos contains [player] information
-	bool start_of_scenario = !saved_game && state.replay_start().child("player");
-
-	//If we start a fresh game, there won't be any snapshot information. If however this
-	//is a savegame, we got a valid snapshot here.
-	if (saved_game) {
-		state.snapshot = snapshot;
-		if (const config &v = snapshot.child("variables")) {
-			sides.set_variables(v);
-		}
-		sides.get_wml_menu_items().set_menu_items(snapshot);
-	}
-
-	//In any type of reload(normal save or start-of-scenario) the players could have
-	//changed and need to be replaced
-	if(saved_game || start_of_scenario){
-		config::child_itors saved_sides = saved_game ?
-			state.snapshot.child_range("side") :
-			state.replay_start().child_range("side");
-		config::const_child_itors level_sides = level.child_range("side");
-
-		BOOST_FOREACH(config &side, saved_sides)
-		{
-			BOOST_FOREACH(const config &lside, level_sides)
-			{
-				if (side["side"] == lside["side"] &&
-						(side["current_player"] != lside["current_player"] ||
-						 side["controller"] != lside["controller"]))
-				{
-					side["current_player"] = lside["current_player"];
-					side["id"] = lside["id"];
-					side["save_id"] = lside["save_id"];
-					side["controller"] = lside["controller"];
-					break;
-				}
-			}
-		}
-	}
-	if(sides.get_variables().empty()) {
-		LOG_NG << "No variables were found for the game_state." << std::endl;
-	} else {
-		LOG_NG << "Variables found and loaded into game_state:" << std::endl;
-		LOG_NG << sides.get_variables();
-	}
-
-	state.carryover_sides_start = sides.to_config();
-}
 
 std::string get_color_string(int id)
 {
@@ -244,6 +121,12 @@ void chat::update_textbox(gui::textbox& textbox)
 	last_update_ = message_history_.size();
 }
 
+void chat::clear_history()
+{
+	message_history_.clear();
+	last_update_ = 0;
+}
+
 std::string chat::format_message(const msg& message)
 {
 	std::string msg_text = message.message;
@@ -276,12 +159,11 @@ SDL_Color chat::color_message(const msg& message) {
 	return c;
 }
 
-ui::ui(game_display& disp, const std::string& title, const config& cfg, chat& c, config& gamelist, bool title_hidden) :
+ui::ui(game_display& disp, const std::string& title, const config& cfg, chat& c, config& gamelist) :
 	gui::widget(disp.video()),
 	disp_(disp),
 	initialized_(false),
 	gamelist_initialized_(false),
-	title_hidden_(title_hidden),
 
 	hotkey_handler_(&disp),
 	disp_manager_(&disp),
@@ -304,7 +186,7 @@ ui::ui(game_display& disp, const std::string& title, const config& cfg, chat& c,
 	gamelist_refresh_(false),
 	lobby_clock_(0)
 {
-	const SDL_Rect area = create_rect(0
+	const SDL_Rect area = sdl::create_rect(0
 			, 0
 			, disp.video().getx()
 			, disp.video().gety());
@@ -627,7 +509,7 @@ void ui::process_network_data(const config& data, const network::connection /*so
 
 void ui::process_network_error(network::error& error)
 {
-	ERR_NW << "Caught networking error: " << error.message << "\n";
+	ERR_NW << "Caught networking error: " << error.message << std::endl;
 
 	// Default behavior is to re-throw the error. May be overridden.
 	throw error;
@@ -648,9 +530,7 @@ void ui::hide_children(bool hide)
 
 void ui::layout_children(const SDL_Rect& /*rect*/)
 {
-	if (!title_hidden_) {
-		title_.set_location(xscale(12) + 8, yscale(38) + 8);
-	}
+	title_.set_location(xscale(12) + 8, yscale(38) + 8);
 	umenu_style.set_width(xscale(159));
 	users_menu_.set_width(xscale(159));
 	users_menu_.set_max_width(xscale(159));
@@ -835,48 +715,6 @@ void ui::append_to_title(const std::string& text) {
 const gui::label& ui::title() const
 {
 	return title_;
-}
-
-int find_suitable_faction(faction_list const &fl, const config &cfg)
-{
-	std::vector<std::string> find;
-	std::string search_field;
-	if (const config::attribute_value *f = cfg.get("faction")) {
-		// Choose based on faction.
-		find.push_back(f->str());
-		search_field = "id";
-	} else if (cfg["faction_from_recruit"].to_bool()) {
-		// Choose based on recruit.
-		find = utils::split(cfg["recruit"]);
-		search_field = "recruit";
-	} else if (const config::attribute_value *l = cfg.get("leader")) {
-		// Choose based on leader.
-		find.push_back(*l);
-		search_field = "leader";
-	} else {
-		return -1;
-	}
-
-	int res = -1, index = 0, best_score = 0;
-	BOOST_FOREACH(const config *faction, fl)
-	{
-		int faction_score = 0;
-		std::vector<std::string> recruit = utils::split((*faction)[search_field]);
-		BOOST_FOREACH(const std::string &search, find) {
-			BOOST_FOREACH(const std::string &r, recruit) {
-				if (r == search) {
-					++faction_score;
-					break;
-				}
-			}
-		}
-		if (faction_score > best_score) {
-			best_score = faction_score;
-			res = index;
-		}
-		++index;
-	}
-	return res;
 }
 
 }// namespace mp

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2007 - 2013
+   Copyright (C) 2007 - 2014
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -15,9 +15,10 @@
 #define MULTIPLAYER_UI_HPP_INCLUDED
 
 #include "chat_events.hpp"
-#include "hotkeys.hpp"
+#include "hotkey/command_executor.hpp"
 #include "network.hpp"
 #include "preferences_display.hpp"
+#include "widgets/combo.hpp"
 #include "widgets/label.hpp"
 #include "widgets/menu.hpp"
 #include "widgets/textbox.hpp"
@@ -27,15 +28,8 @@
 class display;
 class game_display;
 class config;
-class game_state;
 
 namespace mp {
-
-enum controller { CNTR_NETWORK = 0, CNTR_LOCAL, CNTR_COMPUTER, CNTR_EMPTY, CNTR_RESERVED, CNTR_LAST };
-
-void check_response(network::connection res, const config& data);
-
-void level_to_gamestate(config& level, game_state& state);
 
 std::string get_color_string(int id);
 
@@ -51,10 +45,12 @@ public:
 	void init_textbox(gui::textbox& textbox);
 	void update_textbox(gui::textbox& textbox);
 
+	void clear_history();
+
 private:
 	struct msg {
 		msg(const time_t& time, const std::string& user, const std::string& message)
-			: time(time), user(user), message(message) {};
+			: time(time), user(user), message(message) {}
 		time_t time;
 		std::string user;
 		std::string message;
@@ -75,10 +71,11 @@ private:
 class ui : public gui::widget, private events::chat_handler, private font::floating_label_context
 {
 public:
-	enum result { CONTINUE, JOIN, OBSERVE, CREATE, PREFERENCES, PLAY, QUIT };
+	enum result { CONTINUE, JOIN, OBSERVE, CREATE, LOAD_GAME, PREFERENCES,
+		PLAY, QUIT };
 
 	ui(game_display& d, const std::string& title,
-			const config& cfg, chat& c, config& gamelist, bool title_hidden = false);
+			const config& cfg, chat& c, config& gamelist);
 
 	/**
 	 * Asks the multiplayer_ui to pump some data from the network, and then to
@@ -111,7 +108,7 @@ protected:
 	SDL_Rect client_area() const;
 
 	game_display& disp_;
-	game_display& disp() { return disp_; };
+	game_display& disp() { return disp_; }
 
 	/**
 	 * Returns the main game config, as defined by loading the preprocessed WML
@@ -153,7 +150,7 @@ protected:
 	 * Return true if we must accept incoming connections, false if not.
 	 * Defaults to not.
 	 */
-	virtual bool accept_connections() { return false; };
+	virtual bool accept_connections() { return false; }
 
 	/** Processes a pending network connection. */
 	virtual void process_network_connection(const network::connection sock);
@@ -190,7 +187,7 @@ protected:
 	void set_user_menu_items(const std::vector<std::string>& list);
 
 	/** Returns the current gamelist */
-	config& gamelist() { return gamelist_; };
+	config& gamelist() { return gamelist_; }
 
 	void append_to_title(const std::string& name);
 	const gui::label& title() const;
@@ -201,14 +198,13 @@ protected:
 
 private:
 	/**
-	 * Set to true when the widgets are intialized. Allows delayed
+	 * Set to true when the widgets are initialized. Allows delayed
 	 * initialization on first positioning.
 	 */
 	bool initialized_;
 	bool gamelist_initialized_;
-	bool title_hidden_;
 
-	/** Ensures standard hotkeys are coorectly handled. */
+	/** Ensures standard hotkeys are correctly handled. */
 	const hotkey::basic_handler hotkey_handler_;
 
 	const preferences::display_manager disp_manager_;
@@ -269,10 +265,6 @@ private:
 		bool operator> (const user_info& b) const;
 	};
 };
-
-typedef std::vector<const config *> faction_list;
-/** Picks the first faction with the greater amount of data matching the criteria. */
-int find_suitable_faction(faction_list const &fl, const config &side);
 
 }
 

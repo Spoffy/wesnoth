@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -353,9 +353,7 @@ std::string gamemap::write() const
 
 	// Let the low level converter do the conversion
 	std::ostringstream s;
-	s << "border_size=" << border_size_ << "\nusage="
-		<< (usage_ == IS_MAP ? "map" : "mask") << "\n\n"
-		<< t_translation::write_game_map(tiles_, starting_positions)
+	s << t_translation::write_game_map(tiles_, starting_positions)
 		<< "\n";
 	return s.str();
 }
@@ -485,7 +483,7 @@ t_translation::t_terrain gamemap::get_terrain(const map_location& loc) const
 		return tiles_[loc.x + border_size_][loc.y + border_size_];
 	}
 
-	if ( loc == map_location::null_location ) {
+	if ( loc == map_location::null_location() ) {
 		return t_translation::NONE_TERRAIN;
 	}
 
@@ -647,7 +645,7 @@ const std::map<t_translation::t_terrain, size_t>& gamemap::get_weighted_terrain_
 
 	const map_location center(w()/2,h()/2);
 
-	const size_t furthest_distance = distance_between(map_location(0,0),center);
+	const size_t furthest_distance = distance_between(map_location::ZERO(),center);
 
 	const size_t weight_at_edge = 100;
 	const size_t additional_weight_at_center = 200;

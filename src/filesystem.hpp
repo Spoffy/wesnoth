@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -80,7 +80,8 @@ std::string get_umcd_license_file();
  * maximum 1000 files then start always giving 999
  */
 std::string get_next_filename(const std::string& name, const std::string& extension);
-void set_preferences_dir(std::string path);
+void set_user_config_dir(std::string path);
+void set_user_data_dir(std::string path);
 
 const std::string &get_user_config_dir();
 const std::string &get_user_data_dir();
@@ -101,7 +102,7 @@ bool looks_like_pbl(const std::string& file);
  * to the game path (true) or to the current directory from which Wesnoth was run (false).
  */
 std::string read_file(const std::string &fname);
-std::istream *istream_file(const std::string &fname);
+std::istream *istream_file(const std::string &fname, bool treat_failure_as_error = true);
 std::ostream *ostream_file(std::string const &fname);
 /** Throws io_exception if an error occurs. */
 void write_file(const std::string& fname, const std::string& data);
@@ -149,7 +150,7 @@ struct file_tree_checksum
 	file_tree_checksum();
 	explicit file_tree_checksum(const class config& cfg);
 	void write(class config& cfg) const;
-	void reset() {nfiles = 0;modified = 0;sum_size=0;};
+	void reset() {nfiles = 0;modified = 0;sum_size=0;}
 	// @todo make variables private!
 	size_t nfiles, sum_size;
 	time_t modified;
@@ -182,6 +183,14 @@ std::string directory_name(const std::string& file);
  * Returns the absolute path of a file.
  */
 std::string normalize_path(const std::string &path);
+
+/**
+ * Returns whether @a c is a path separator.
+ *
+ * @note / is always a path separator. Additionally, on Windows \\ is a
+ *       path separator as well.
+ */
+bool is_path_sep(char c);
 
 /**
  *  The paths manager is responsible for recording the various paths

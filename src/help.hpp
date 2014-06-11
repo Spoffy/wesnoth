@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -18,7 +18,7 @@ class config;
 class display;
 class gamemap;
 
-#include "hotkeys.hpp"
+#include "hotkey/command_executor.hpp"
 #include "construct_dialog.hpp"
 
 namespace help {
@@ -41,12 +41,16 @@ void show_help(display &disp, const section &toplevel, const std::string& show_t
 void show_help(display &disp, const std::string& show_topic="", int xloc=-1, int yloc=-1);
 
 /// wrapper to add unit prefix and hiding symbol
-void show_unit_help(display &disp, const std::string& unit_id, bool hidden = false,
-				int xloc=-1, int yloc=-1);
+void show_unit_help(display &disp, const std::string& unit_id, bool has_variations=false,
+				bool hidden = false, int xloc=-1, int yloc=-1);
 
 /// wrapper to add variation prefix and hiding symbol
 void show_variation_help(display &disp, const std::string &unit_id, const std::string &variation,
 				bool hidden = false, int xloc=-1, int yloc=-1);
+
+/// wrapper to add terrain prefix and hiding symbol
+void show_terrain_help(display &disp, const std::string& unit_id, bool hidden = false,
+				int xloc = -1, int yloc = -1);
 
 class help_button : public gui::dialog_button, public hotkey::command_executor {
 public:
@@ -58,7 +62,7 @@ public:
 	void leave();
 private:
 	void show_help();
-	bool can_execute_command(hotkey::HOTKEY_COMMAND cmd, int/*index*/ =-1) const;
+	bool can_execute_command(const hotkey::hotkey_command& command, int/*index*/ =-1) const;
 
 	display &disp_;
 	const std::string topic_;

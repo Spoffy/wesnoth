@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2012 - 2013 by Mark de Wever <koraq@xs4all.nl>
+   Copyright (C) 2012 - 2014 by Mark de Wever <koraq@xs4all.nl>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 #ifndef TESTS_TEST_SDL_UTILS_HPP_INCLUDED
 #define TESTS_TEST_SDL_UTILS_HPP_INCLUDED
 
-#include "sdl_utils.hpp"
+#include "sdl/utils.hpp"
 
 #include <boost/function.hpp>
 

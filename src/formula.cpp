@@ -27,7 +27,7 @@ namespace game_logic
 
 void formula_callable::set_value(const std::string& key, const variant& /*value*/)
 {
-	std::cerr << "ERROR: cannot set key '" << key << "' on object\n";
+	std::cerr << "ERROR: cannot set key '" << key << "' on object" << std::endl;
 }
 
 
@@ -503,7 +503,7 @@ private:
 
 class null_expression : public formula_expression {
 public:
-	explicit null_expression() {};
+	explicit null_expression() {}
 	std::string str() const {
 		return "";
 	}
@@ -634,7 +634,7 @@ int operator_precedence(const token& t)
 		precedence_map["+"]     = ++n;
 		precedence_map["-"]     = n;
 		precedence_map["*"]     = ++n;
-		precedence_map["/"]     = ++n;
+		precedence_map["/"]     = n;
 		precedence_map["%"]     = ++n;
 		precedence_map["^"]     = ++n;
 		precedence_map["d"]     = ++n;
@@ -1033,7 +1033,7 @@ formula::formula(const std::string& str, function_symbol_table* symbols) :
 
 			tokens.push_back( get_token(i1,i2) );
 
-			TOKEN_TYPE current_type = tokens.back().type;
+			formula_tokenizer::TOKEN_TYPE current_type = tokens.back().type;
 
 			if(current_type == TOKEN_WHITESPACE)  {
 				tokens.pop_back();

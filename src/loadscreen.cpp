@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2005 - 2013 by Joeri Melis <joeri_melis@hotmail.com>
+   Copyright (C) 2005 - 2014 by Joeri Melis <joeri_melis@hotmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -24,6 +24,7 @@
 #include "marked-up_text.hpp"
 #include "gettext.hpp"
 #include "filesystem.hpp"
+#include "sdl/rect.hpp"
 #include "video.hpp"
 #include "image.hpp"
 
@@ -69,14 +70,27 @@ void loadscreen::global_loadscreen_manager::reset()
 loadscreen::loadscreen(CVideo &screen, const int percent):
 	screen_(screen),
 	textarea_(),
+#if SDL_VERSION_ATLEAST(2,0,0)
+	logo_texture_(),
+#else
 	logo_surface_(image::get_image("misc/logo.png")),
+#endif
 	logo_drawn_(false),
 	pby_offset_(0),
 	prcnt_(percent)
 {
+#if SDL_VERSION_ATLEAST(2,0,0)
+	surface surf = image::get_image("misc/logo.png");
+	if (surf.null()) {
+		ERR_DP << "loadscreen: Failed to load the logo" << std::endl;
+	}
+
+	logo_texture_ = CVideo::get_window()->create_texture(SDL_TEXTUREACCESS_STATIC, surf);
+#else
 	if (logo_surface_.null()) {
 		ERR_DP << "loadscreen: Failed to load the logo" << std::endl;
 	}
+#endif
 	textarea_.x = textarea_.y = textarea_.w = textarea_.h = 0;
 }
 void loadscreen::draw_screen(const std::string &text)
@@ -111,12 +125,36 @@ void loadscreen::draw_screen(const std::string &text)
 	// Pump events and make sure to redraw the logo if there's a chance that it's been obscured
 	SDL_Event ev;
 	while(SDL_PollEvent(&ev)) {
-		if(ev.type == SDL_VIDEORESIZE || ev.type == SDL_VIDEOEXPOSE) {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		if(ev.type == SDL_WINDOWEVENT
+				&& (ev.window.event == SDL_WINDOWEVENT_RESIZED
+					|| ev.window.event == SDL_WINDOWEVENT_EXPOSED))
+#else
+		if(ev.type == SDL_VIDEORESIZE || ev.type == SDL_VIDEOEXPOSE)
+#endif
+		{
 			logo_drawn_ = false;
 		}
 	}
 
 	// Draw logo if it was successfully loaded.
+#if SDL_VERSION_ATLEAST(2,0,0)
+	if (!logo_texture_.null() /*&& !logo_drawn_*/) {
+		int x = (screen_.getx () - logo_texture_.width()) / 2;
+		int y = ((scry - logo_texture_.height()) / 2) - pbh;
+
+		// Check if we have enough pixels to display it.
+		if (x > 0 && y > 0) {
+			pby_offset_ = (pbh + logo_texture_.height())/2;
+			CVideo::get_window()->draw(logo_texture_, x, y);
+		} else {
+			if (!screen_.faked()) {  // Avoid error if --nogui is used.
+				ERR_DP << "loadscreen: Logo image is too big." << std::endl;
+			}
+		}
+		logo_drawn_ = true;
+	}
+#else
 	if (logo_surface_ && !logo_drawn_) {
 		area.x = (screen_.getx () - logo_surface_->w) / 2;
 		area.y = ((scry - logo_surface_->h) / 2) - pbh;
@@ -127,75 +165,85 @@ void loadscreen::draw_screen(const std::string &text)
 			pby_offset_ = (pbh + area.h)/2;
 			sdl_blit(logo_surface_, 0, gdis, &area);
 		} else {
-			ERR_DP << "loadscreen: Logo image is too big." << std::endl;
+			if (!screen_.faked()) {  // Avoid error if --nogui is used.
+				ERR_DP << "loadscreen: Logo image is too big." << std::endl;
+			}
 		}
 		logo_drawn_ = true;
 		update_rect(area.x, area.y, area.w, area.h);
 	}
+#endif
 	int pbx = (scrx - pbw)/2;					// Horizontal location.
 	int pby = (scry - pbh)/2 + pby_offset_;		// Vertical location.
 
 	// Draw top border.
 	area.x = pbx; area.y = pby;
 	area.w = pbw + 2*(bw+bispw); area.h = bw;
-	sdl_fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
+	sdl::fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
 	// Draw bottom border.
 	area.x = pbx; area.y = pby + pbh + bw + 2*bispw;
 	area.w = pbw + 2*(bw+bispw); area.h = bw;
-	sdl_fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
+	sdl::fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
 	// Draw left border.
 	area.x = pbx; area.y = pby + bw;
 	area.w = bw; area.h = pbh + 2*bispw;
-	sdl_fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
+	sdl::fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
 	// Draw right border.
 	area.x = pbx + pbw + bw + 2*bispw; area.y = pby + bw;
 	area.w = bw; area.h = pbh + 2*bispw;
-	sdl_fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
+	sdl::fill_rect(gdis,&area,SDL_MapRGB(gdis->format,bcr,bcg,bcb));
 	// Draw the finished bar area.
 	area.x = pbx + bw + bispw; area.y = pby + bw + bispw;
 	area.w = (prcnt_ * pbw) / 100; area.h = pbh;
-	sdl_fill_rect(gdis,&area,SDL_MapRGB(gdis->format,fcr,fcg,fcb));
+	sdl::fill_rect(gdis,&area,SDL_MapRGB(gdis->format,fcr,fcg,fcb));
 
 	SDL_Rect lightning = area;
 	lightning.h = lightning_thickness;
 	//we add 25% of white to the color of the bar to simulate a light effect
-	sdl_fill_rect(gdis,&lightning,SDL_MapRGB(gdis->format,(fcr*3+255)/4,(fcg*3+255)/4,(fcb*3+255)/4));
+	sdl::fill_rect(gdis,&lightning,SDL_MapRGB(gdis->format,(fcr*3+255)/4,(fcg*3+255)/4,(fcb*3+255)/4));
 	lightning.y = area.y+area.h-lightning.h;
 	//remove 50% of color to simulate a shadow effect
-	sdl_fill_rect(gdis,&lightning,SDL_MapRGB(gdis->format,fcr/2,fcg/2,fcb/2));
+	sdl::fill_rect(gdis,&lightning,SDL_MapRGB(gdis->format,fcr/2,fcg/2,fcb/2));
 
 	// Draw the leftover bar area.
 	area.x = pbx + bw + bispw + (prcnt_ * pbw) / 100; area.y = pby + bw + bispw;
 	area.w = ((100 - prcnt_) * pbw) / 100; area.h = pbh;
-	sdl_fill_rect(gdis,&area,SDL_MapRGB(gdis->format,lcr,lcg,lcb));
+	sdl::fill_rect(gdis,&area,SDL_MapRGB(gdis->format,lcr,lcg,lcb));
 
 	// Clear the last text and draw new if text is provided.
 	if (!text.empty())
 	{
 		SDL_Rect oldarea = textarea_;
-		sdl_fill_rect(gdis,&textarea_,SDL_MapRGB(gdis->format,0,0,0));
+		sdl::fill_rect(gdis,&textarea_,SDL_MapRGB(gdis->format,0,0,0));
 		textarea_ = font::line_size(text, font::SIZE_NORMAL);
 		textarea_.x = scrx/2 + bw + bispw - textarea_.w / 2;
 		textarea_.y = pby + pbh + 4*(bw + bispw);
 		textarea_ = font::draw_text(&screen_,textarea_,font::SIZE_NORMAL,font::NORMAL_COLOR,text,textarea_.x,textarea_.y);
-		SDL_Rect refresh = union_rects(oldarea, textarea_);
+		SDL_Rect refresh = sdl::union_rects(oldarea, textarea_);
 		update_rect(refresh.x, refresh.y, refresh.w, refresh.h);
 	}
 	// Update the rectangle.
 	update_rect(pbx, pby, pbw + 2*(bw + bispw), pbh + 2*(bw + bispw));
 	screen_.flip();
+#if SDL_VERSION_ATLEAST(2,0,0)
+	CVideo::get_window()->render();
+#endif
 }
 
 void loadscreen::clear_screen()
 {
-	int scrx = screen_.getx();                     //< Screen width.
-	int scry = screen_.gety();                     //< Screen height.
-	SDL_Rect area = create_rect(0, 0, scrx, scry); // Screen area.
+#if SDL_VERSION_ATLEAST(2,0,0)
+	CVideo::get_window()->clear(0,0,0);
+#else
+	int scrx = screen_.getx();                     // Screen width.
+	int scry = screen_.gety();                     // Screen height.
+	SDL_Rect area = sdl::create_rect(0, 0, scrx, scry); // Screen area.
 	surface disp(screen_.getSurface());      // Screen surface.
 	// Make everything black.
-	sdl_fill_rect(disp,&area,SDL_MapRGB(disp->format,0,0,0));
+	sdl::fill_rect(disp,&area,SDL_MapRGB(disp->format,0,0,0));
 	update_whole_screen();
 	screen_.flip();
+#endif
 }
 
 loadscreen *loadscreen::global_loadscreen = 0;
@@ -218,23 +266,23 @@ static int const nb_stages = 19;
  */
 static load_stage const stages[nb_stages] =
 {
-	{ "init gui", N_("Initializing user interface"), 0, 17210 },
-	{ "load config", N_("Loading game configuration"), 20, 0 },
-	{ "verify cache", N_("Verifying cache"), 20, 164 },
-	{ "create cache", N_("Reading files and creating cache"), 21, 80287 },
-	{ "load unit types", N_("Reading unit files"), 94, 467 },
-	{ "init fonts", N_("Reinitialize fonts for the current language"), 98, 17 },
+	{ "init gui", N_("Initializing user interface"), 0, 27089 },
+	{ "load config", N_("Loading game configuration"), 46, 0 },
+	{ "verify cache", N_("Verifying cache"), 46, 179 },
+	{ "create cache", N_("Reading files and creating cache"), 47, 60317 },
+	{ "load unit types", N_("Reading unit files"), 85, 531 },
+	{ "init fonts", N_("Reinitialize fonts for the current language"), 96, 21 },
 	{ "refresh addons", N_("Searching for installed add-ons"), 99, 0 },
 	{ "titlescreen", N_("Loading title screen"), 100, 0 },
 	{ "load data", N_("Loading data files"), 0, 0 },
 	{ "verify cache", N_("Verifying cache"), 0, 0 },
-	{ "create cache", N_("Reading files and creating cache"), 0, 152109 },
-	{ "load unit types", N_("Reading unit files"), 74, 488 },
-	{ "load level", N_("Loading level"), 75, 0 },
-	{ "init teams", N_("Initializing teams"), 75, 0 },
-	{ "load units", N_("Loading units"), 77, 0 },
-	{ "init theme", N_("Initializing display"), 77, 0 },
-	{ "build terrain", N_("Building terrain rules"), 77, 1240 },
+	{ "create cache", N_("Reading files and creating cache"), 0, 152852 },
+	{ "load unit types", N_("Reading unit files"), 38, 553 },
+	{ "load level", N_("Loading level"), 41, 0 },
+	{ "init teams", N_("Initializing teams"), 41, 0 },
+	{ "load units", N_("Loading units"), 43, 0 },
+	{ "init theme", N_("Initializing display"), 43, 0 },
+	{ "build terrain", N_("Building terrain rules"), 43, 1545 },
 	{ "init display", N_("Initializing display"), 99, 0 },
 	{ "start game", N_("Starting game"), 100, 0 },
 };

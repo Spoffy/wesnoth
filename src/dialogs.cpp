@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -22,7 +22,7 @@
 #include "actions/attack.hpp"
 #include "actions/undo.hpp"
 #include "dialogs.hpp"
-#include "game_events.hpp"
+#include "format_time_summary.hpp"
 #include "game_display.hpp"
 #include "game_preferences.hpp"
 #include "gui/dialogs/game_delete.hpp"
@@ -39,8 +39,12 @@
 #include "mouse_handler_base.hpp"
 #include "minimap.hpp"
 #include "replay.hpp"
+#include "replay_helper.hpp"
 #include "resources.hpp"
 #include "savegame.hpp"
+#include "save_index.hpp"
+#include "strftime.hpp"
+#include "synced_context.hpp"
 #include "thread.hpp"
 #include "unit_helper.hpp"
 #include "unit_types.hpp"
@@ -133,8 +137,9 @@ gui::dialog_button_action::RESULT delete_recall_unit::button_pressed(int menu_se
 		assert(dismissed_unit != recall_list.end());
 
 		// Record the dismissal, then delete the unit.
-		recorder.add_disband(dismissed_unit->id());
-		recall_list.erase(dismissed_unit);
+		synced_context::run_in_synced_context("disband", replay_helper::get_disband(dismissed_unit->id()));
+		//recorder.add_disband(dismissed_unit->id());
+		//recall_list.erase(dismissed_unit);
 
 		return gui::DELETE_ITEM;
 	} else {
@@ -203,66 +208,6 @@ int advance_unit_dialog(const map_location &loc)
 		return advances.show();
 	}
 	return 0;
-}
-
-void advance_unit(const map_location &loc, bool automatic, bool add_replay_event, const ai::unit_advancements_aspect& advancements)
-{
-	unit_map::iterator u = resources::units->find(loc);
-	if(!unit_helper::will_certainly_advance(u)) {
-		return;
-	}
-
-	LOG_DP << "advance_unit: " << u->type_id() << " (advances: " << u->advances()
-		<< " XP: " <<u->experience() << '/' << u->max_experience() << ")\n";
-
-	int res;
-
-	if (automatic) {
-
-		//if the advancements are empty or don't match any option
-		//choose random instead.
-		res = rand() % unit_helper::number_of_possible_advances(*u);
-
-		const std::vector<std::string>& options = u->advances_to();
-		const std::vector<std::string>& allowed = advancements.get_advancements(u);
-
-		for(std::vector<std::string>::const_iterator a = options.begin(); a != options.end(); ++a) {
-			if (std::find(allowed.begin(), allowed.end(), *a) != allowed.end()){
-				res = a - options.begin();
-				break;
-			}
-		}
-	} else {
-		res = advance_unit_dialog(loc);
-	}
-	if(add_replay_event) {
-		recorder.add_advancement(loc);
-	}
-
-	config choice_cfg;
-	choice_cfg["value"] = res;
-	recorder.user_input("choose", choice_cfg);
-
-	LOG_DP << "animating advancement...\n";
-	animate_unit_advancement(loc, size_t(res));
-
-	// In some rare cases the unit can have enough XP to advance again,
-	// so try to do that.
-	// Make sure that we don't enter an infinite level loop.
-	u = resources::units->find(loc);
-	if (u != resources::units->end()) {
-		// Level 10 unit gives 80 XP and the highest mainline is level 5
-		if (u->experience() < 81) {
-			// For all leveling up we have to add advancement to replay here because replay
-			// doesn't handle cascading advancement since it just calls animate_unit_advancement().
-			advance_unit(loc, automatic, true, advancements);
-		} else {
-			ERR_CF << "Unit has too many (" << u->experience()
-				<< ") XP left; cascade leveling disabled.\n";
-		}
-	} else {
-		ERR_NG << "Unit advanced no longer exists.\n";
-	}
 }
 
 bool animate_unit_advancement(const map_location &loc, size_t choice, const bool &fire_event, const bool animate)
@@ -496,9 +441,9 @@ int recruit_dialog(display& disp, std::vector< const unit_type* >& units, const 
 
 
 #ifdef LOW_MEM
-int recall_dialog(display& disp, std::vector< const unit* >& units, int /*side*/, const std::string& title_suffix)
+int recall_dialog(display& disp, std::vector< const unit* >& units, int /*side*/, const std::string& title_suffix, const int team_recall_cost)
 #else
-int recall_dialog(display& disp, std::vector< const unit* >& units, int side, const std::string& title_suffix)
+int recall_dialog(display& disp, std::vector< const unit* >& units, int side, const std::string& title_suffix, const int team_recall_cost)
 #endif
 {
 	std::vector<std::string> options, options_to_filter;
@@ -524,12 +469,37 @@ int recall_dialog(display& disp, std::vector< const unit* >& units, int side, co
 		if (name.empty()) name = utils::unicode_em_dash;
 
 		option << IMAGE_PREFIX << u->absolute_image();
+
 	#ifndef LOW_MEM
 		option << "~RC("  << u->team_color() << '>'
 			<< team::get_side_color_index(side) << ')';
+
+		if(u->can_recruit()) {
+			option << "~BLIT(" << unit::leader_crown() << ")";
+		}
+
+		BOOST_FOREACH(const std::string& overlay, u->overlays())
+		{
+			option << "~BLIT(" << overlay << ")";
+		}
 	#endif
-		option << COLUMN_SEPARATOR
-			<< u->type_name() << COLUMN_SEPARATOR
+
+		option << COLUMN_SEPARATOR;
+		int cost = u->recall_cost();
+		if(cost < 0) {
+			cost = team_recall_cost;
+		}
+		option << u->type_name() << "\n";
+		if(cost > team_recall_cost) {
+			option << font::NORMAL_TEXT << "<255,0,0>";
+		}
+		else if(cost == team_recall_cost) {
+			option << font::NORMAL_TEXT;
+		}
+		else if(cost < team_recall_cost) {
+			option << font::NORMAL_TEXT << "<0,255,0>";
+		}
+		option << cost << " Gold" << COLUMN_SEPARATOR
 			<< name << COLUMN_SEPARATOR;
 
 		// Show units of level (0=gray, 1 normal, 2 bold, 2+ bold&wbright)
@@ -562,7 +532,7 @@ int recall_dialog(display& disp, std::vector< const unit* >& units, int side, co
 		options.push_back(option.str());
 		options_to_filter.push_back(option_to_filter.str());
 	}
-	
+
 	gui::dialog rmenu(disp, _("Recall") + title_suffix,
 		_("Select unit:") + std::string("\n"),
 		gui::OK_CANCEL, gui::dialog::default_style);
@@ -709,7 +679,7 @@ private:
 
 void save_preview_pane::decide_on_difficulty_option()
 {
-	if (difficulty_option_ == NULL) {
+	if (difficulty_option_ == NULL || size_t(index_) >= info_->size()) {
 		return;
 	}
 
@@ -727,7 +697,7 @@ void save_preview_pane::draw_contents()
 	surface screen = video().getSurface();
 
 	SDL_Rect const &loc = location();
-	const SDL_Rect area = create_rect(loc.x + save_preview_border
+	const SDL_Rect area = sdl::create_rect(loc.x + save_preview_border
 			, loc.y + save_preview_border
 			, loc.w - save_preview_border * 2
 			, loc.h - save_preview_border * 2);
@@ -755,7 +725,7 @@ void save_preview_pane::draw_contents()
 		have_leader_image = !image.null();
 
 		if(have_leader_image) {
-			SDL_Rect image_rect = create_rect(area.x, area.y, image->w, image->h);
+			SDL_Rect image_rect = sdl::create_rect(area.x, area.y, image->w, image->h);
 			ypos += image_rect.h + save_preview_border;
 
 			sdl_blit(image,NULL,screen,&image_rect);
@@ -803,7 +773,7 @@ void save_preview_pane::draw_contents()
 	if(map_surf != NULL) {
 		// Align the map to the left when the leader image is missing.
 		const int map_x = have_leader_image ? area.x + area.w - map_surf->w : area.x;
-		SDL_Rect map_rect = create_rect(map_x
+		SDL_Rect map_rect = sdl::create_rect(map_x
 				, area.y
 				, map_surf->w
 				, map_surf->h);
@@ -816,7 +786,7 @@ void save_preview_pane::draw_contents()
 	const savegame::save_info& save = (*info_)[index_];
 	tm* tm_l = localtime(&save.modified());
 	if (tm_l) {
-		const size_t res = strftime(time_buf,sizeof(time_buf),
+		const size_t res = util::strftime(time_buf,sizeof(time_buf),
 			(preferences::use_twelve_hour_clock_format() ? _("%a %b %d %I:%M %p %Y") : _("%a %b %d %H:%M %Y")),
 			tm_l);
 		if(res == 0) {
@@ -834,36 +804,47 @@ void save_preview_pane::draw_contents()
 	const std::string& campaign_type = summary["campaign_type"];
 	if (summary["corrupt"].to_bool()) {
 		str << "\n" << _("#(Invalid)");
-	} else if (!campaign_type.empty()) {
+	} else {
 		str << "\n";
 
-		if(campaign_type == "scenario") {
-			const std::string campaign_id = summary["campaign"];
-			const config *campaign = NULL;
-			if (!campaign_id.empty()) {
-				if (const config &c = game_config_->find_child("campaign", "id", campaign_id))
-					campaign = &c;
-			}
-			utils::string_map symbols;
-			if (campaign != NULL) {
-				symbols["campaign_name"] = (*campaign)["name"];
-			} else {
-				// Fallback to nontranslatable campaign id.
-				symbols["campaign_name"] = "(" + campaign_id + ")";
-			}
-			str << vgettext("Campaign: $campaign_name", symbols);
+		try {
+			game_classification::CAMPAIGN_TYPE ct = lexical_cast<game_classification::CAMPAIGN_TYPE> (campaign_type);
 
-			// Display internal id for debug purposes if we didn't above
-			if (game_config::debug && (campaign != NULL)) {
-				str << '\n' << "(" << campaign_id << ")";
+			switch (ct) {
+				case game_classification::SCENARIO:
+				{
+					const std::string campaign_id = summary["campaign"];
+					const config *campaign = NULL;
+					if (!campaign_id.empty()) {
+						if (const config &c = game_config_->find_child("campaign", "id", campaign_id))
+						campaign = &c;
+					}
+					utils::string_map symbols;
+					if (campaign != NULL) {
+						symbols["campaign_name"] = (*campaign)["name"];
+					} else {
+						// Fallback to nontranslatable campaign id.
+						symbols["campaign_name"] = "(" + campaign_id + ")";
+					}
+					str << vgettext("Campaign: $campaign_name", symbols);
+
+					// Display internal id for debug purposes if we didn't above
+					if (game_config::debug && (campaign != NULL)) {
+						str << '\n' << "(" << campaign_id << ")";
+					}
+					break;
+				}
+				case game_classification::MULTIPLAYER:
+					str << _("Multiplayer");
+					break;
+				case game_classification::TUTORIAL:
+					str << _("Tutorial");
+					break;
+				case game_classification::TEST:
+					str << _("Test scenario");
+					break;
 			}
-		} else if(campaign_type == "multiplayer") {
-			str << _("Multiplayer");
-		} else if(campaign_type == "tutorial") {
-			str << _("Tutorial");
-		} else if(campaign_type == "test") {
-			str << _("Test scenario");
-		} else {
+		} catch (bad_lexical_cast &) {
 			str << campaign_type;
 		}
 
@@ -884,61 +865,6 @@ void save_preview_pane::draw_contents()
 	}
 
 	font::draw_text(&video(), area, font::SIZE_SMALL, font::NORMAL_COLOR, str.str(), area.x, ypos, true);
-}
-
-std::string format_time_summary(time_t t)
-{
-	time_t curtime = time(NULL);
-	const struct tm* timeptr = localtime(&curtime);
-	if(timeptr == NULL) {
-		return "";
-	}
-
-	const struct tm current_time = *timeptr;
-
-	timeptr = localtime(&t);
-	if(timeptr == NULL) {
-		return "";
-	}
-
-	const struct tm save_time = *timeptr;
-
-	const char* format_string = _("%b %d %y");
-
-	if(current_time.tm_year == save_time.tm_year) {
-		const int days_apart = current_time.tm_yday - save_time.tm_yday;
-		if(days_apart == 0) {
-			// save is from today
-			if(preferences::use_twelve_hour_clock_format() == false) {
-				format_string = _("%H:%M");
-			}
-			else {
-				format_string = _("%I:%M %p");
-			}
-		} else if(days_apart > 0 && days_apart <= current_time.tm_wday) {
-			// save is from this week
-			if(preferences::use_twelve_hour_clock_format() == false) {
-				format_string = _("%A, %H:%M");
-			}
-			else {
-				format_string = _("%A, %I:%M %p");
-			}
-		} else {
-			// save is from current year
-			format_string = _("%b %d");
-		}
-	} else {
-		// save is from a different year
-		format_string = _("%b %d %y");
-	}
-
-	char buf[40];
-	const size_t res = strftime(buf,sizeof(buf),format_string,&save_time);
-	if(res == 0) {
-		buf[0] = 0;
-	}
-
-	return buf;
 }
 
 } // end anon namespace
@@ -967,10 +893,10 @@ std::string load_game_dialog(display& disp, const config& game_config, bool* sel
 	std::vector<savegame::save_info>::const_iterator i;
 	for(i = games.begin(); i != games.end(); ++i) {
 		std::string name = i->name();
-		utils::truncate_as_wstring(name, std::min<size_t>(name.size(), 40));
+		utf8::truncate(name, 40);	// truncate only acts if the name is longer
 
 		std::ostringstream str;
-		str << name << COLUMN_SEPARATOR << format_time_summary(i->modified());
+		str << name << COLUMN_SEPARATOR << util::format_time_summary(i->modified());
 
 		items.push_back(str.str());
 	}
@@ -1072,7 +998,8 @@ unit_preview_pane::details::details() :
 	xp_color(),
 	movement_left(0),
 	total_movement(0),
-	attacks()
+	attacks(),
+	overlays()
 {
 }
 
@@ -1134,7 +1061,7 @@ void unit_preview_pane::draw_contents()
 	surface screen = video().getSurface();
 
 	SDL_Rect const &loc = location();
-	const SDL_Rect area = create_rect(loc.x + unit_preview_border
+	const SDL_Rect area = sdl::create_rect(loc.x + unit_preview_border
 			, loc.y + unit_preview_border
 			, loc.w - unit_preview_border * 2
 			, loc.h - unit_preview_border * 2);
@@ -1145,10 +1072,10 @@ void unit_preview_pane::draw_contents()
 	if (!left_)
 		unit_image = image::reverse_image(unit_image);
 
-	SDL_Rect image_rect = create_rect(area.x, area.y, 0, 0);
+	SDL_Rect image_rect = sdl::create_rect(area.x, area.y, 0, 0);
 
 	if(unit_image != NULL) {
-		SDL_Rect rect = create_rect(
+		SDL_Rect rect = sdl::create_rect(
 				  right_align
 					? area.x
 					: area.x + area.w - unit_image->w
@@ -1158,10 +1085,26 @@ void unit_preview_pane::draw_contents()
 
 		sdl_blit(unit_image,NULL,screen,&rect);
 		image_rect = rect;
+
+		if(!det.overlays.empty()) {
+			BOOST_FOREACH(const std::string& overlay, det.overlays) {
+				surface os = image::get_image(overlay);
+
+				if(!os) {
+					continue;
+				}
+
+				if(os->w > rect.w || os->h > rect.h) {
+					os = scale_surface(os, rect.w, rect.h, false);
+				}
+
+				sdl_blit(os, NULL, screen, &rect);
+			}
+		}
 	}
 
 	// Place the 'unit profile' button
-	const SDL_Rect button_loc = create_rect(
+	const SDL_Rect button_loc = sdl::create_rect(
 			  right_align
 				? area.x
 				: area.x + area.w - details_button_.location().w
@@ -1170,7 +1113,7 @@ void unit_preview_pane::draw_contents()
 			, details_button_.location().h);
 	details_button_.set_location(button_loc);
 
-	SDL_Rect description_rect = create_rect(image_rect.x
+	SDL_Rect description_rect = sdl::create_rect(image_rect.x
 			, image_rect.y + image_rect.h + details_button_.location().h
 			, 0
 			, 0);
@@ -1324,6 +1267,15 @@ const unit_preview_pane::details units_list_preview_pane::get_details() const
 	det.total_movement= u.total_movement();
 
 	det.attacks = u.attacks();
+
+	if(u.can_recruit()) {
+		det.overlays.push_back(unit::leader_crown());
+	};
+
+	BOOST_FOREACH(const std::string& overlay, u.overlays()) {
+		det.overlays.push_back(overlay);
+	}
+
 	return det;
 }
 
@@ -1428,13 +1380,21 @@ void show_unit_description(const unit &u)
 	show_unit_description(u.type());
 }
 
+void show_terrain_description(const terrain_type &t)
+{
+	help::show_terrain_help(*display::get_singleton(), t.id(), t.hide_in_editor() || t.is_combined());
+}
+
 void show_unit_description(const unit_type &t)
 {
-	const std::string &var = t.get_cfg()["variation_name"];
+	std::string var_id = t.get_cfg()["variation_id"].str();
+	if (var_id.empty())
+		var_id = t.get_cfg()["variation_name"].str();
 	bool hide_help = t.hide_help();
 	bool use_variation = false;
-	if (!var.empty()) {
+	if (!var_id.empty()) {
 		const unit_type *parent = unit_types.find(t.id());
+		assert(parent);
 		if (hide_help) {
 			hide_help = parent->hide_help();
 		} else {
@@ -1443,9 +1403,9 @@ void show_unit_description(const unit_type &t)
 	}
 
 	if (use_variation)
-		help::show_variation_help(*display::get_singleton(), t.id(), var, hide_help);
+		help::show_variation_help(*display::get_singleton(), t.id(), var_id, hide_help);
 	else
-		help::show_unit_help(*display::get_singleton(), t.id(), hide_help);
+		help::show_unit_help(*display::get_singleton(), t.id(), !t.variations().empty(), hide_help);
 }
 
 static network::connection network_data_dialog(display& disp, const std::string& msg, config& cfg, network::connection connection_num, network::statistics (*get_stats)(network::connection handle))
@@ -1470,7 +1430,7 @@ static network::connection network_data_dialog(display& disp, const std::string&
 	frame.layout(centered_layout);
 	frame.draw();
 
-	const SDL_Rect progress_rect = create_rect(centered_layout.x + border
+	const SDL_Rect progress_rect = sdl::create_rect(centered_layout.x + border
 			, centered_layout.y + border
 			, centered_layout.w - border * 2
 			, centered_layout.h - border * 2);
@@ -1491,7 +1451,7 @@ static network::connection network_data_dialog(display& disp, const std::string&
 			old_stats = stats;
 			progress.set_progress_percent((stats.current*100)/stats.current_max);
 			std::ostringstream stream;
-			stream << stats.current/1024 << "/" << stats.current_max/1024 << _("KB");
+			stream << utils::si_string(stats.current, true, _("unit_byte^B")) << "/" << utils::si_string(stats.current_max, true, _("unit_byte^B"));
 			progress.set_text(stream.str());
 		}
 

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+   Copyright (C) 2009 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -19,6 +19,7 @@
 #include "image.hpp"
 #include "image_modifications.hpp"
 #include "log.hpp"
+#include "sdl/alpha.hpp"
 #include "serialization/string_utils.hpp"
 
 #include <boost/foreach.hpp>
@@ -191,8 +192,7 @@ surface rotate_modification::operator()(const surface& src) const
 		case 360: return src;
 	}
 
-	// Other values are not supported. Ignore them.
-	return src;
+	return rotate_any_surface(src, normalized, zoom_, offset_);
 }
 
 surface gs_modification::operator()(const surface& src) const
@@ -210,14 +210,24 @@ surface crop_modification::operator()(const surface& src) const
 		area.h = src->h;
 	}
 	if(area.x < 0) {
-		ERR_DP << "start X coordinate of CROP modification is negative - truncating to zero\n";
+		ERR_DP << "start X coordinate of CROP modification is negative - truncating to zero" << std::endl;
 		area.x = 0;
 	}
 	if(area.y < 0) {
-		ERR_DP << "start Y coordinate of CROP modification is negative - truncating to zero\n";
+		ERR_DP << "start Y coordinate of CROP modification is negative - truncating to zero" << std::endl;
 		area.y = 0;
 	}
-	return cut_surface(src, area);
+
+	/*
+	 * Unlike other image functions cut_surface does not convert the input
+	 * surface to a neutral surface, nor does it convert its return surface
+	 * to an optimised surface.
+	 *
+	 * Since it seems to work for most cases, rather change this caller instead
+	 * of the function signature. (The issue was discovered in bug #20876).
+	 */
+	return create_optimized_surface(
+			cut_surface(make_neutral_surface(src), area));
 }
 
 const SDL_Rect& crop_modification::get_slice() const
@@ -266,7 +276,7 @@ surface blit_modification::operator()(const surface& src) const
 	//blit_surface want neutral surfaces
 	surface nsrc = make_neutral_surface(src);
 	surface nsurf = make_neutral_surface(surf_);
-	SDL_Rect r = create_rect(x_, y_, 0, 0);
+	SDL_Rect r = sdl::create_rect(x_, y_, 0, 0);
 	blit_surface(nsurf, NULL, nsrc, &r);
 	return nsrc;
 }
@@ -290,7 +300,7 @@ surface mask_modification::operator()(const surface& src) const
 {
 	if(src->w == mask_->w &&  src->h == mask_->h && x_ == 0 && y_ == 0)
 		return mask_surface(src, mask_);
-	SDL_Rect r = create_rect(x_, y_, 0, 0);
+	SDL_Rect r = sdl::create_rect(x_, y_, 0, 0);
 	surface new_mask = create_neutral_surface(src->w, src->h);
 	blit_surface(mask_, NULL, new_mask, &r);
 	return mask_surface(src, new_mask);
@@ -337,13 +347,13 @@ surface scale_modification::operator()(const surface& src) const
 
 	if(w <= 0) {
 		if(w < 0) {
-			ERR_DP << "width of SCALE is negative - resetting to original width\n";
+			ERR_DP << "width of SCALE is negative - resetting to original width" << std::endl;
 		}
 		w = old_w;
 	}
 	if(h <= 0) {
 		if(h < 0) {
-			ERR_DP << "height of SCALE is negative - resetting to original height\n";
+			ERR_DP << "height of SCALE is negative - resetting to original height" << std::endl;
 		}
 		h = old_h;
 	}
@@ -452,10 +462,15 @@ surface darken_modification::operator()(const surface &src) const
 surface background_modification::operator()(const surface &src) const
 {
 	surface ret = make_neutral_surface(src);
+#if SDL_VERSION_ATLEAST(2,0,0)
+	SDL_FillRect(ret, NULL, SDL_MapRGBA(ret->format, color_.r, color_.g,
+					    color_.b, color_.a));
+#else
 	SDL_FillRect(ret, NULL, SDL_MapRGBA(ret->format, color_.r, color_.g,
 					    color_.b, color_.unused));
+#endif
 	SDL_SetAlpha(src, SDL_SRCALPHA, SDL_ALPHA_OPAQUE);
-	SDL_BlitSurface(src, NULL, ret, NULL);
+	blit_surface(src, NULL, ret, NULL);
 	return ret;
 }
 
@@ -492,7 +507,7 @@ REGISTER_MOD_PARSER(TC, args)
 	std::vector<std::string> params = utils::split(args,',');
 
 	if(params.size() < 2) {
-		ERR_DP << "too few arguments passed to the ~TC() function\n";
+		ERR_DP << "too few arguments passed to the ~TC() function" << std::endl;
 
 		return NULL;
 	}
@@ -512,7 +527,7 @@ REGISTER_MOD_PARSER(TC, args)
 		try {
 			team_color = lexical_cast<std::string>(side_n);
 		} catch(bad_lexical_cast const&) {
-			ERR_DP << "bad things happen\n";
+			ERR_DP << "bad things happen" << std::endl;
 
 			return NULL;
 		}
@@ -640,7 +655,30 @@ REGISTER_MOD_PARSER(FL, args)
 // Rotations
 REGISTER_MOD_PARSER(ROTATE, args)
 {
-	return new rotate_modification(lexical_cast_default<int>(args, 90));
+	std::vector<std::string> const& slice_params = utils::split(args, ',', utils::STRIP_SPACES);
+	const size_t s = slice_params.size();
+
+	switch (s) {
+		case 0:
+			return new rotate_modification();
+			break;
+		case 1:
+			return new rotate_modification(
+					lexical_cast_default<int>(slice_params[0]));
+			break;
+		case 2:
+			return new rotate_modification(
+					lexical_cast_default<int>(slice_params[0]),
+					lexical_cast_default<int>(slice_params[1]));
+			break;
+		case 3:
+			return new rotate_modification(
+					lexical_cast_default<int>(slice_params[0]),
+					lexical_cast_default<int>(slice_params[1]),
+					lexical_cast_default<int>(slice_params[2]));
+			break;
+	}
+	return NULL;
 }
 
 // Grayscale
@@ -656,7 +694,7 @@ REGISTER_MOD_PARSER(CS, args)
 	const size_t s = factors.size();
 
 	if(s == 0) {
-		ERR_DP << "no arguments passed to the ~CS() function\n";
+		ERR_DP << "no arguments passed to the ~CS() function" << std::endl;
 		return NULL;
 	}
 
@@ -680,7 +718,7 @@ REGISTER_MOD_PARSER(BLEND, args)
 	const std::vector<std::string>& params = utils::split(args, ',');
 
 	if(params.size() != 4) {
-		ERR_DP << "~BLEND() requires exactly 4 arguments\n";
+		ERR_DP << "~BLEND() requires exactly 4 arguments" << std::endl;
 		return NULL;
 	}
 
@@ -711,7 +749,7 @@ REGISTER_MOD_PARSER(CROP, args)
 	const size_t s = slice_params.size();
 
 	if(s == 0 || (s == 1 && slice_params[0].empty())) {
-		ERR_DP << "no arguments passed to the ~CROP() function\n";
+		ERR_DP << "no arguments passed to the ~CROP() function" << std::endl;
 		return NULL;
 	}
 
@@ -747,7 +785,7 @@ REGISTER_MOD_PARSER(BLIT, args)
 	const size_t s = param.size();
 
 	if(s == 0 || (s == 1 && param[0].empty())){
-		ERR_DP << "no arguments passed to the ~BLIT() function\n";
+		ERR_DP << "no arguments passed to the ~BLIT() function" << std::endl;
 		return NULL;
 	}
 
@@ -759,7 +797,7 @@ REGISTER_MOD_PARSER(BLIT, args)
 	}
 
 	if(x < 0 || y < 0) { //required by blit_surface
-		ERR_DP << "negative position arguments in ~BLIT() function\n";
+		ERR_DP << "negative position arguments in ~BLIT() function" << std::endl;
 		return NULL;
 	}
 
@@ -780,7 +818,7 @@ REGISTER_MOD_PARSER(MASK, args)
 	const size_t s = param.size();
 
 	if(s == 0 || (s == 1 && param[0].empty())){
-		ERR_DP << "no arguments passed to the ~MASK() function\n";
+		ERR_DP << "no arguments passed to the ~MASK() function" << std::endl;
 		return NULL;
 	}
 
@@ -792,7 +830,7 @@ REGISTER_MOD_PARSER(MASK, args)
 	}
 
 	if(x < 0 || y < 0) { //required by blit_surface
-		ERR_DP << "negative position arguments in ~MASK() function\n";
+		ERR_DP << "negative position arguments in ~MASK() function" << std::endl;
 		return NULL;
 	}
 
@@ -810,7 +848,7 @@ REGISTER_MOD_PARSER(MASK, args)
 REGISTER_MOD_PARSER(L, args)
 {
 	if(args.empty()){
-		ERR_DP << "no arguments passed to the ~L() function\n";
+		ERR_DP << "no arguments passed to the ~L() function" << std::endl;
 		return NULL;
 	}
 
@@ -826,7 +864,7 @@ REGISTER_MOD_PARSER(SCALE, args)
 	const size_t s = scale_params.size();
 
 	if(s == 0 || (s == 1 && scale_params[0].empty())) {
-		ERR_DP << "no arguments passed to the ~SCALE() function\n";
+		ERR_DP << "no arguments passed to the ~SCALE() function" << std::endl;
 		return NULL;
 	}
 

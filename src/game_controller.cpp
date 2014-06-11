@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -167,15 +167,10 @@ game_controller::game_controller(const commandline_options& cmdline_opts, const 
 		}
 		preferences::set_draw_delay(fps);
 	}
-	if (cmdline_opts_.nogui) {
+	if (cmdline_opts_.nogui || cmdline_opts_.headless_unit_test) {
 		no_sound = true;
 		preferences::disable_preferences_save();
 	}
-	if (cmdline_opts_.new_storyscreens)
-		// This is a hidden option to help testing
-		// the work-in-progress new storyscreen code.
-		// Don't document.
-		set_new_storyscreen(true);
 	if (cmdline_opts_.new_widgets)
 		gui2::new_widgets = true;
 	if (cmdline_opts_.nodelay)
@@ -250,6 +245,13 @@ game_controller::game_controller(const commandline_options& cmdline_opts, const 
 		if (!cmdline_opts_.test->empty())
 			test_scenario_ = *cmdline_opts_.test;
 	}
+	if (cmdline_opts_.unit_test)
+	{
+		if (!cmdline_opts_.unit_test->empty()) {
+			test_scenario_ = *cmdline_opts_.unit_test;
+		}
+
+	}
 	if (cmdline_opts_.windowed)
 		preferences::set_fullscreen(false);
 	if (cmdline_opts_.with_replay)
@@ -301,14 +303,10 @@ bool game_controller::init_joystick()
 
 	SDL_JoystickEventState(SDL_ENABLE);
 
-	SDL_Joystick* joystick;
-
 	bool joystick_found = false;
 	for (int i = 0; i<joysticks; i++)  {
 
-		joystick = SDL_JoystickOpen(i);
-
-		if (joystick)
+		if (SDL_JoystickOpen(i))
 			joystick_found = true;
 	}
 	return joystick_found;
@@ -337,19 +335,13 @@ bool game_controller::init_language()
 	}
 	::set_language(locale);
 
-	if(!cmdline_opts_.nogui) {
-		std::string wm_title_string = _("The Battle for Wesnoth");
-		wm_title_string += " - " + game_config::revision;
-		SDL_WM_SetCaption(wm_title_string.c_str(), NULL);
-	}
-
 	return true;
 }
 
 bool game_controller::init_video()
 {
-	if(cmdline_opts_.nogui) {
-		if( !(cmdline_opts_.multiplayer || cmdline_opts_.screenshot) ) {
+	if(cmdline_opts_.nogui || cmdline_opts_.headless_unit_test) {
+		if( !(cmdline_opts_.multiplayer || cmdline_opts_.screenshot || cmdline_opts_.headless_unit_test) ) {
 			std::cerr << "--nogui flag is only valid with --multiplayer flag or --screenshot flag\n";
 			return false;
 		}
@@ -358,11 +350,19 @@ bool game_controller::init_video()
 		return true;
 	}
 
+	std::string wm_title_string = _("The Battle for Wesnoth");
+	wm_title_string += " - " + game_config::revision;
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
+	SDL_WM_SetCaption(wm_title_string.c_str(), NULL);
+#endif
+
 #if !(defined(__APPLE__))
 	surface icon(image::get_image("game-icon.png", image::UNSCALED));
 	if(icon != NULL) {
 		///must be called after SDL_Init() and before setting video mode
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
 		SDL_WM_SetIcon(icon,NULL);
+#endif
 	}
 #endif
 
@@ -378,17 +378,18 @@ bool game_controller::init_video()
 		bpp = 32;
 	}
 
+	if(!found_matching && (video_flags & FULL_SCREEN)) {
+		video_flags ^= FULL_SCREEN;
+		found_matching = preferences::detect_video_settings(video_, resolution, bpp, video_flags);
+		if (found_matching) {
+			std::cerr << "Failed to set " << resolution.first << 'x' << resolution.second << 'x' << bpp << " in fullscreen mode. Using windowed instead.\n";
+		}
+	}
+
 	if(!found_matching) {
 		std::cerr << "Video mode " << resolution.first << 'x'
 			<< resolution.second << 'x' << bpp
 			<< " is not supported.\n";
-
-		if ((video_flags & FULL_SCREEN)) {
-			std::cerr << "Try running the program with the --windowed option "
-				<< "using a " << bpp << "bpp setting for your display adapter.\n";
-		} else {
-			std::cerr << "Try running the program with the --fullscreen option.\n";
-		}
 
 		return false;
 	}
@@ -401,7 +402,14 @@ bool game_controller::init_video()
 		          << resolution.second << "x" << bpp << " is not supported\n";
 		return false;
 	}
-
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	CVideo::set_window_title(wm_title_string);
+#if !(defined(__APPLE__))
+	if(icon != NULL) {
+		CVideo::set_window_icon(icon);
+	}
+#endif
+#endif
 	return true;
 }
 
@@ -417,7 +425,7 @@ bool game_controller::play_test()
 
 	first_time = false;
 
-	state_.classification().campaign_type = "test";
+	state_.classification().campaign_type = game_classification::TEST;
 	state_.carryover_sides_start["next_scenario"] = test_scenario_;
 	state_.classification().campaign_define = "TEST";
 
@@ -431,6 +439,82 @@ bool game_controller::play_test()
 	}
 
 	return false;
+}
+
+// Same as play_test except that we return the results of play_game.
+int game_controller::unit_test()
+{
+	static bool first_time_unit = true;
+
+	if(!cmdline_opts_.unit_test) {
+		return 0;
+	}
+	if(!first_time_unit)
+		return 0;
+
+	first_time_unit = false;
+
+	state_.classification().campaign_type = game_classification::TEST;
+	state_.carryover_sides_start["next_scenario"] = test_scenario_;
+	state_.classification().campaign_define = "TEST";
+
+	resources::config_manager->
+		load_game_config_for_game(state_.classification());
+
+	try {
+		LEVEL_RESULT res = play_game(disp(),state_,resources::config_manager->game_config(), IO_NONE, false, false, false, true);
+		if (!(res == VICTORY || res == NONE) || lg::broke_strict()) {
+			return 1;
+		}
+	} catch (game::load_game_exception &) {
+		std::cerr << "Load_game_exception encountered while loading the unit test!" << std::endl;
+		return 1; //failed to load the unit test scenario
+	} catch(twml_exception& e) {
+		std::cerr << "Caught WML Exception:" << e.dev_message << std::endl; //e.show(disp());
+		return 1;
+	}
+
+	savegame::clean_saves(state_.classification().label);
+
+	if (cmdline_opts_.noreplaycheck)
+		return 0; //we passed, huzzah!
+
+	savegame::replay_savegame save(state_, compression::NONE);
+	save.save_game_automatic(disp().video(), false, "unit_test_replay"); //false means don't check for overwrite
+
+	clear_loaded_game();
+
+	//game::load_game_exception::game = *cmdline_opts_.load
+	game::load_game_exception::game = "unit_test_replay";
+	//	game::load_game_exception::game = "Unit_test_" + test_scenario_ + "_replay";
+
+	game::load_game_exception::show_replay = true;
+	game::load_game_exception::cancel_orders = true;
+
+	if (!load_game()) {
+		std::cerr << "Failed to load the replay!" << std::endl;
+		return 3; //failed to load replay
+	}
+
+	try {
+		//LEVEL_RESULT res = play_game(disp(), state_, resources::config_manager->game_config(), IO_NONE, false,false,false,true);
+		LEVEL_RESULT res = ::play_replay(disp(), state_, resources::config_manager->game_config(), video_, true);
+		if (!(res == VICTORY || res == NONE)) {
+			std::cerr << "Observed failure on replay" << std::endl;
+			return 4;
+		}
+		/*::play_replay(disp(),state_,resources::config_manager->game_config(),
+		    video_);*/
+		clear_loaded_game();
+	} catch (game::load_game_exception &) {
+		std::cerr << "Load_game_exception encountered during play_replay!" << std::endl;
+		return 3; //failed to load replay
+	} catch(twml_exception& e) {
+		std::cerr << "WML Exception while playing replay: " << e.dev_message << std::endl; //e.show(disp());
+		return 4; //failed with an error during the replay
+	}
+
+	return 0; //we passed, huzzah!
 }
 
 bool game_controller::play_screenshot_mode()
@@ -526,19 +610,20 @@ bool game_controller::load_game()
 			LOG_CONFIG << "setting replay to end...\n";
 			recorder.set_to_end();
 			if(!recorder.at_end()) {
-				WRN_CONFIG << "recorder is not at the end!!!\n";
+				WRN_CONFIG << "recorder is not at the end!!!" << std::endl;
 			}
 		}
 	}
 
-	if(state_.classification().campaign_type == "multiplayer") {
+	if(state_.classification().campaign_type == game_classification::MULTIPLAYER) {
 		BOOST_FOREACH(config &side, state_.snapshot.child_range("side"))
 		{
 			if (side["controller"] == "network")
 				side["controller"] = "human";
 			if (side["controller"] == "network_ai")
-				side["controller"] = "human_ai";
+				side["controller"] = "ai";
 		}
+		gui2::show_message(disp().video(), _("Warning") , _("This is a multiplayer scenario. Some parts of it may not work properly in single-player. It is recommended to load this scenario through the Multiplayer -> Load Game dialog instead."));
 	}
 
 	if (load.cancel_orders()) {
@@ -558,8 +643,8 @@ bool game_controller::load_game()
 
 void game_controller::set_tutorial()
 {
-	state_ = game_state();
-	state_.classification().campaign_type = "tutorial";
+	state_ = saved_game();
+	state_.classification().campaign_type = game_classification::TUTORIAL;
 	state_.carryover_sides_start["next_scenario"] = "tutorial";
 	state_.classification().campaign_define = "TUTORIAL";
 }
@@ -573,12 +658,18 @@ void game_controller::mark_completed_campaigns(std::vector<config> &campaigns)
 
 bool game_controller::new_campaign()
 {
-	state_ = game_state();
-	state_.classification().campaign_type = "scenario";
+	state_ = saved_game();
+	state_.classification().campaign_type = game_classification::SCENARIO;
 
-	const config::const_child_itors &ci =
-	    resources::config_manager->game_config().child_range("campaign");
-	std::vector<config> campaigns(ci.first, ci.second);
+	std::vector<config> campaigns;
+	BOOST_FOREACH(const config& campaign,
+		resources::config_manager->game_config().child_range("campaign")) {
+
+		if (campaign["type"] != "mp") {
+			campaigns.push_back(campaign);
+		}
+	}
+
 	mark_completed_campaigns(campaigns);
 	std::stable_sort(campaigns.begin(),campaigns.end(),less_campaigns_rank);
 
@@ -589,6 +680,7 @@ bool game_controller::new_campaign()
 	}
 
 	int campaign_num = -1;
+	bool use_deterministic_mode = false;
 	// No campaign selected from command line
 	if (jump_to_campaign_.campaign_id_.empty() == true)
 	{
@@ -606,6 +698,9 @@ bool game_controller::new_campaign()
 		}
 
 		campaign_num = dlg.get_choice();
+
+		use_deterministic_mode = dlg.get_deterministic();
+
 	}
 	else
 	{
@@ -633,6 +728,10 @@ bool game_controller::new_campaign()
 	const config &campaign = campaigns[campaign_num];
 	state_.classification().campaign = campaign["id"].str();
 	state_.classification().abbrev = campaign["abbrev"].str();
+
+	std::string random_mode = use_deterministic_mode ? "deterministic" : "";
+	state_.carryover_sides_start["random_mode"] = random_mode;
+	state_.classification().random_mode = random_mode;
 
 	// we didn't specify in the command line the scenario to be started
 	if (jump_to_campaign_.scenario_id_.empty())
@@ -677,6 +776,12 @@ bool game_controller::new_campaign()
 				std::cerr << "incorrect difficulty number: [" <<
 					jump_to_campaign_.difficulty_ << "]. maximum is [" <<
 					difficulties.size() << "].\n";
+				return false;
+			}
+			else if (jump_to_campaign_.difficulty_ < 1)
+			{
+				std::cerr << "incorrect difficulty number: [" <<
+					jump_to_campaign_.difficulty_ << "]. minimum is [1].\n";
 				return false;
 			}
 			else
@@ -768,7 +873,7 @@ void game_controller::start_wesnothd()
 	preferences::set_mp_server_program_name("");
 
 	// Couldn't start server so throw error
-	WRN_GENERAL << "Failed to run server start script\n";
+	WRN_GENERAL << "Failed to run server start script" << std::endl;
 	throw game::mp_server_error("Starting MP server failed!");
 }
 
@@ -776,9 +881,8 @@ bool game_controller::play_multiplayer()
 {
 	int res;
 
-	state_ = game_state();
-	state_.classification().campaign_type = "multiplayer";
-	state_.classification().campaign_define = "MULTIPLAYER";
+	state_ = saved_game();
+	state_.classification().campaign_type = game_classification::MULTIPLAYER;
 
 	//Print Gui only if the user hasn't specified any server
 	if( multiplayer_server_.empty() ){
@@ -840,13 +944,8 @@ bool game_controller::play_multiplayer()
 		cursor::set(cursor::NORMAL);
 
 		if(res == 3) {
-			config game_data;
-
-			const mp::controller cntr = mp::CNTR_LOCAL;
-
 			mp::start_local_game(disp(),
-			    resources::config_manager->game_config(), cntr);
-
+			    resources::config_manager->game_config(), state_);
 		} else if((res >= 0 && res <= 2) || res == 4) {
 			std::string host;
 			if(res == 0) {
@@ -858,7 +957,7 @@ bool game_controller::play_multiplayer()
 				multiplayer_server_ = "";
 			}
 			mp::start_client(disp(), resources::config_manager->game_config(),
-			    host);
+				state_, host);
 		}
 
 	} catch(game::mp_server_error& e) {
@@ -869,19 +968,19 @@ bool game_controller::play_multiplayer()
 		gui2::show_error_message(disp().video(), _("Error while playing the game: ") + e.message);
 	} catch(network::error& e) {
 		if(e.message != "") {
-			ERR_NET << "caught network::error: " << e.message << "\n";
+			ERR_NET << "caught network::error: " << e.message << std::endl;
 			gui2::show_transient_message(disp().video()
 					, ""
 					, gettext(e.message.c_str()));
 		} else {
-			ERR_NET << "caught network::error\n";
+			ERR_NET << "caught network::error" << std::endl;
 		}
 	} catch(config::error& e) {
 		if(e.message != "") {
-			ERR_CONFIG << "caught config::error: " << e.message << "\n";
+			ERR_CONFIG << "caught config::error: " << e.message << std::endl;
 			gui2::show_transient_message(disp().video(), "", e.message);
 		} else {
-			ERR_CONFIG << "caught config::error\n";
+			ERR_CONFIG << "caught config::error" << std::endl;
 		}
 	} catch(incorrect_map_format_error& e) {
 		gui2::show_error_message(disp().video(), std::string(_("The game map could not be loaded: ")) + e.message);
@@ -903,9 +1002,8 @@ bool game_controller::play_multiplayer_commandline()
 	DBG_MP << "starting multiplayer game from the commandline" << std::endl;
 
 	// These are all the relevant lines taken literally from play_multiplayer() above
-	state_ = game_state();
-	state_.classification().campaign_type = "multiplayer";
-	state_.classification().campaign_define = "MULTIPLAYER";
+	state_ = saved_game();
+	state_.classification().campaign_type = game_classification::MULTIPLAYER;
 
 	resources::config_manager->
 		load_game_config_for_game(state_.classification());
@@ -913,11 +1011,8 @@ bool game_controller::play_multiplayer_commandline()
 	events::discard_input(); // prevent the "keylogger" effect
 	cursor::set(cursor::NORMAL);
 
-	config game_data;
-	const mp::controller cntr = mp::CNTR_LOCAL;
-
 	mp::start_local_game_commandline(disp(),
-	    resources::config_manager->game_config(), cntr, cmdline_opts_);
+	    resources::config_manager->game_config(), state_, cmdline_opts_);
 
 	return false;
 }
@@ -928,10 +1023,14 @@ bool game_controller::change_language()
 	dlg.show(disp().video());
 	if (dlg.get_retval() != gui2::twindow::OK) return false;
 
-	if (!cmdline_opts_.nogui) {
+	if (!(cmdline_opts_.nogui || cmdline_opts_.headless_unit_test)) {
 		std::string wm_title_string = _("The Battle for Wesnoth");
 		wm_title_string += " - " + game_config::revision;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		CVideo::set_window_title(wm_title_string);
+#else
 		SDL_WM_SetCaption(wm_title_string.c_str(), NULL);
+#endif
 	}
 
 	return true;
@@ -964,7 +1063,7 @@ void game_controller::launch_game(RELOAD_GAME_DATA reload)
 		    resources::config_manager->game_config());
 		// don't show The End for multiplayer scenario
 		// change this if MP campaigns are implemented
-		if(result == VICTORY && (state_.classification().campaign_type.empty() || state_.classification().campaign_type != "multiplayer")) {
+		if(result == VICTORY && state_.classification().campaign_type != game_classification::MULTIPLAYER) {
 			preferences::add_completed_campaign(state_.classification().campaign);
 			the_end(disp(), state_.classification().end_text, state_.classification().end_text_duration);
 			if(state_.classification().end_credits) {
@@ -1015,6 +1114,8 @@ editor::EXIT_STATUS game_controller::start_editor(const std::string& filename)
 
 game_controller::~game_controller()
 {
-	gui::dialog::delete_empty_menu();
-	sound::close_sound();
+	try {
+		gui::dialog::delete_empty_menu();
+		sound::close_sound();
+	} catch (...) {}
 }

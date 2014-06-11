@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -65,6 +65,12 @@ bool language_def::operator== (const language_def& a) const
 
 symbol_table string_table;
 
+bool& time_locale_correct()
+{
+	static bool result = true;
+	return result;
+}
+
 const t_string& symbol_table::operator[](const std::string& key) const
 {
 	const utils::string_map::const_iterator i = strings_.find(key);
@@ -128,21 +134,20 @@ static void wesnoth_setlocale(int category, std::string const &slocale,
 	// LANGUAGE overrides other settings, so for now just get rid of it
 	// FIXME: add configure check for unsetenv
 #ifndef _WIN32
-#ifndef __AMIGAOS4__
 	unsetenv ("LANGUAGE"); // void so no return value to check
 #endif
-#endif
 
-#if defined(__BEOS__) || defined(__APPLE__)
-	if (category == LC_MESSAGES && setenv("LANG", locale.c_str(), 1) == -1)
+#ifdef __APPLE__
+	if (category == LC_MESSAGES && setenv("LANG", locale.c_str(), 1) == -1) {
 		ERR_G << "setenv LANG failed: " << strerror(errno);
+	}
 #endif
 
 #ifdef _WIN32
 	std::string win_locale(locale, 0, 2);
 	#include "language_win32.ii"
 	if(category == LC_MESSAGES) {
-		SetEnvironmentVariable("LANG", win_locale.c_str());
+		SetEnvironmentVariableA("LANG", win_locale.c_str());
 		std::string env = "LANGUAGE=" + locale;
 		_putenv(env.c_str());
 		return;
@@ -183,15 +188,18 @@ static void wesnoth_setlocale(int category, std::string const &slocale,
 		++i;
 	}
 
-	WRN_G << "setlocale() failed for '" << slocale << "'.\n";
+	WRN_G << "setlocale() failed for '" << slocale << "'." << std::endl;
+
+	if (category == LC_TIME) {
+		time_locale_correct() = false;
+	}
+
 #ifndef _WIN32
-#ifndef __AMIGAOS4__
 		if(category == LC_MESSAGES) {
-			WRN_G << "Setting LANGUAGE to '" << slocale << "'.\n";
+			WRN_G << "Setting LANGUAGE to '" << slocale << "'." << std::endl;
 			setenv("LANGUAGE", slocale.c_str(), 1);
 			std::setlocale(LC_MESSAGES, "");
 		}
-#endif
 #endif
 
 	done:
@@ -208,6 +216,8 @@ void set_language(const language_def& locale)
 	std::transform(locale.localename.begin(),locale.localename.end(),locale_lc.begin(),tolower);
 
 	current_language = locale;
+	time_locale_correct() = true;
+
 	wesnoth_setlocale(LC_COLLATE, locale.localename, &locale.alternates);
 	wesnoth_setlocale(LC_TIME, locale.localename, &locale.alternates);
 	wesnoth_setlocale(LC_MESSAGES, locale.localename, &locale.alternates);
@@ -295,7 +305,7 @@ void init_textdomains(const config& cfg)
 			if (location.empty()) {
 				//if location is empty, this causes a crash on Windows, so we
 				//disallow adding empty domains
-				ERR_G << "no location found for '" << path << "', skipping textdomain\n";
+				ERR_G << "no location found for '" << path << "', skipping textdomain" << std::endl;
 			} else {
 				t_string::add_textdomain(name, location);
 			}

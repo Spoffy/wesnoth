@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playlevel Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -19,12 +19,18 @@
  */
 
 #include "play_controller.hpp"
+
 #include "actions/create.hpp"
 #include "actions/heal.hpp"
 #include "actions/undo.hpp"
 #include "actions/vision.hpp"
 #include "dialogs.hpp"
-#include "game_events.hpp"
+#include "formula_string_utils.hpp"
+#include "game_events/handlers.hpp"
+#include "game_events/menu_item.hpp"
+#include "game_events/pump.hpp"
+#include "game_preferences.hpp"
+#include "map_label.hpp"
 #include "gettext.hpp"
 #include "halo.hpp"
 #include "loadscreen.hpp"
@@ -32,23 +38,28 @@
 #include "pathfind/teleport.hpp"
 #include "resources.hpp"
 #include "savegame.hpp"
+#include "saved_game.hpp"
 #include "sound.hpp"
 #include "unit_id.hpp"
-#include "terrain_filter.hpp"
 #include "save_blocker.hpp"
 #include "preferences_display.hpp"
 #include "replay.hpp"
+#include "random_new_deterministic.hpp"
 #include "soundsource.hpp"
+#include "synced_context.hpp"
 #include "tooltips.hpp"
-#include "game_preferences.hpp"
 #include "wml_exception.hpp"
-#include "formula_string_utils.hpp"
 #include "ai/manager.hpp"
 #include "ai/testing.hpp"
 #include "whiteboard/manager.hpp"
 #include "scripting/lua.hpp"
+#include "hotkey/hotkey_item.hpp"
 
 #include <boost/foreach.hpp>
+
+static lg::log_domain log_aitesting("aitesting");
+#define LOG_AIT LOG_STREAM(info, log_aitesting)
+//If necessary, this define can be replaced with `#define LOG_AIT std::cout` to restore previous behavior
 
 static lg::log_domain log_engine("engine");
 #define LOG_NG LOG_STREAM(info, log_engine)
@@ -63,24 +74,28 @@ static lg::log_domain log_enginerefac("enginerefac");
 static void clear_resources()
 {
 	resources::controller = NULL;
+	resources::gameboard = NULL;
 	resources::gamedata = NULL;
-	resources::game_map = NULL;
 	resources::persist = NULL;
 	resources::screen = NULL;
 	resources::soundsources = NULL;
-	resources::state_of_game = NULL;
 	resources::teams = NULL;
 	resources::tod_manager = NULL;
 	resources::tunnels = NULL;
 	resources::undo_stack = NULL;
 	resources::units = NULL;
 	resources::whiteboard = NULL;
+
+
+	resources::classification = NULL;
+	resources::mp_settings = NULL;
+
 }
 
 
 
-play_controller::play_controller(const config& level, game_state& state_of_game,
-		const int ticks, const int num_turns, const config& game_config,
+play_controller::play_controller(const config& level, saved_game& state_of_game,
+		const int ticks, const config& game_config,
 		CVideo& video, bool skip_replay) :
 	controller_base(ticks, game_config, video),
 	observer(),
@@ -92,20 +107,18 @@ play_controller::play_controller(const config& level, game_state& state_of_game,
 	halo_manager_(),
 	labels_manager_(),
 	help_manager_(&game_config),
-	mouse_handler_(NULL, teams_, units_, map_),
-	menu_handler_(NULL, units_, teams_, level, map_, game_config, state_of_game),
+	gameboard_(game_config, level),
+	mouse_handler_(NULL, gameboard_),
+	menu_handler_(NULL, gameboard_, level, game_config),
 	soundsources_manager_(),
-	tod_manager_(level, num_turns),
+	tod_manager_(level),
 	pathfind_manager_(),
 	persist_(),
 	gui_(),
 	statistics_context_(level["name"]),
 	level_(level),
-	teams_(),
 	gamestate_(state_of_game),
 	gamedata_(level),
-	map_(game_config, level),
-	units_(),
 	undo_stack_(new actions::undo_list(level.child("undo_stack"))),
 	whiteboard_manager_(),
 	xp_mod_(level["experience_modifier"].to_int(100)),
@@ -114,30 +127,35 @@ play_controller::play_controller(const config& level, game_state& state_of_game,
 	player_number_(1),
 	first_player_(level_["playing_team"].to_int() + 1),
 	start_turn_(tod_manager_.turn()), // tod_manager_ constructed above
-	is_host_(true),
 	skip_replay_(skip_replay),
 	linger_(false),
 	it_is_a_new_turn_(true),
-	init_side_done_(false),
+	init_side_done_(level["init_side_done"].to_bool(true)),
 	savenames_(),
 	wml_commands_(),
 	victory_when_enemies_defeated_(true),
+	remove_from_carryover_on_defeat_(true),
 	end_level_data_(),
 	victory_music_(),
-	defeat_music_()
+	defeat_music_(),
+	scope_()
 {
 	resources::controller = this;
+	resources::gameboard = &gameboard_;
 	resources::gamedata = &gamedata_;
-	resources::game_map = &map_;
 	resources::persist = &persist_;
-	resources::state_of_game = &gamestate_;
-	resources::teams = &teams_;
+	resources::teams = &gameboard_.teams_;
 	resources::tod_manager = &tod_manager_;
 	resources::undo_stack = undo_stack_.get();
-	resources::units = &units_;
+	resources::units = &gameboard_.units_;
+
+
+	resources::classification = &gamestate_.classification();
+	resources::mp_settings = &gamestate_.mp_settings();
 
 	persist_.start_transaction();
-
+	n_unit::id_manager::instance().set_save_id(level_["next_underlying_unit_id"]);
+	
 	// Setup victory and defeat music
 	set_victory_music_list(level_["victory_music"]);
 	set_defeat_music_list(level_["defeat_music"]);
@@ -169,19 +187,10 @@ void play_controller::init(CVideo& video){
 	}
 
 	loadscreen::start_stage("load level");
-	// If the recorder has no event, adds an "game start" event
-	// to the recorder, whose only goal is to initialize the RNG
-	if(recorder.empty()) {
-		recorder.add_start();
-	} else {
-		recorder.pre_replay();
-	}
 	recorder.set_skip(false);
 
-	bool snapshot = level_["snapshot"].to_bool();
-
 	if (level_["modify_placing"].to_bool()) {
-		LOG_NG << "modifying placing...\n";
+		LOG_NG << "modifying placing..." << std::endl;
 		place_sides_in_preferred_locations();
 	}
 
@@ -189,7 +198,7 @@ void play_controller::init(CVideo& video){
 		tod_manager_.add_time_area(t);
 	}
 
-	LOG_NG << "initialized teams... "    << (SDL_GetTicks() - ticks_) << "\n";
+	LOG_NG << "initialized teams... "    << (SDL_GetTicks() - ticks_) << std::endl;
 	loadscreen::start_stage("init teams");
 
 	resources::teams->resize(level_.child_count("side"));
@@ -210,7 +219,7 @@ void play_controller::init(CVideo& video){
 		seen_save_ids.insert(save_id);
 		if (first_human_team_ == -1) {
 			const std::string &controller = side["controller"];
-			if (controller == preferences::client_type() &&
+			if (controller == "human" &&
 			    side["id"] == preferences::login()) {
 				first_human_team_ = team_num;
 			} else if (controller == "human") {
@@ -218,35 +227,37 @@ void play_controller::init(CVideo& video){
 			}
 		}
 		team_builder_ptr tb_ptr = gamedata_.create_team_builder(side,
-			save_id, teams_, level_, map_, units_, snapshot, gamestate_.replay_start());
+			save_id, gameboard_.teams_, level_, gameboard_.map_, gameboard_.units_, gamestate_.replay_start());
 		++team_num;
 		gamedata_.build_team_stage_one(tb_ptr);
 		team_builders.push_back(tb_ptr);
 	}
-
-	BOOST_FOREACH(team_builder_ptr tb_ptr, team_builders)
 	{
-		gamedata_.build_team_stage_two(tb_ptr);
+		//sync traits of start units and the random start time.
+		random_new::set_random_determinstic deterministic(gamedata_.rng());
+
+		tod_manager_.resolve_random(*random_new::generator);
+
+		BOOST_FOREACH(team_builder_ptr tb_ptr, team_builders)
+		{
+			gamedata_.build_team_stage_two(tb_ptr);
+		}
 	}
 
 	// mouse_handler expects at least one team for linger mode to work.
-	if (teams_.empty()) end_level_data_.transient.linger_mode = false;
+	if (gameboard_.teams().empty()) end_level_data_.transient.linger_mode = false;
 
-	LOG_NG << "loading units..." << (SDL_GetTicks() - ticks_) << "\n";
+	LOG_NG << "loading units..." << (SDL_GetTicks() - ticks_) << std::endl;
 	loadscreen::start_stage("load units");
-	preferences::encounter_recruitable_units(teams_);
-	preferences::encounter_start_units(units_);
-	preferences::encounter_recallable_units(teams_);
-	preferences::encounter_map_terrain(map_);
+	preferences::encounter_all_content(gameboard_);
 
-
-	LOG_NG << "initializing theme... " << (SDL_GetTicks() - ticks_) << '\n';
+	LOG_NG << "initializing theme... " << (SDL_GetTicks() - ticks_) << std::endl;
 	loadscreen::start_stage("init theme");
 	const config &theme_cfg = get_theme(game_config_, level_["theme"]);
 
-	LOG_NG << "building terrain rules... " << (SDL_GetTicks() - ticks_) << '\n';
+	LOG_NG << "building terrain rules... " << (SDL_GetTicks() - ticks_) << std::endl;
 	loadscreen::start_stage("build terrain");
-	gui_.reset(new game_display(units_, video, map_, tod_manager_, teams_, theme_cfg, level_));
+	gui_.reset(new game_display(gameboard_, video, tod_manager_, theme_cfg, level_));
 	if (!gui_->video().faked()) {
 		if (gamestate_.mp_settings().mp_countdown)
 			gui_->get_theme().modify_label("time-icon", _ ("time left for current turn"));
@@ -259,7 +270,7 @@ void play_controller::init(CVideo& video){
 	menu_handler_.set_gui(gui_.get());
 	resources::screen = gui_.get();
 
-	LOG_NG << "done initializing display... " << (SDL_GetTicks() - ticks_) << "\n";
+	LOG_NG << "done initializing display... " << (SDL_GetTicks() - ticks_) << std::endl;
 
 	if(first_human_team_ != -1) {
 		gui_->set_team(first_human_team_);
@@ -270,9 +281,9 @@ void play_controller::init(CVideo& video){
 		// If not set here observer would be without fog until
 		// the first turn of observable side
 		size_t i;
-		for (i=0;i < teams_.size();++i)
+		for (i=0;i < gameboard_.teams().size();++i)
 		{
-			if (!teams_[i].get_disallow_observers())
+			if (!gameboard_.teams()[i].get_disallow_observers())
 			{
 				gui_->set_team(i);
 			}
@@ -301,7 +312,7 @@ void play_controller::init(CVideo& video){
 }
 
 void play_controller::init_managers(){
-	LOG_NG << "initializing managers... " << (SDL_GetTicks() - ticks_) << "\n";
+	LOG_NG << "initializing managers... " << (SDL_GetTicks() - ticks_) << std::endl;
 	prefs_disp_manager_.reset(new preferences::display_manager(gui_.get()));
 	tooltips_manager_.reset(new tooltips::manager(gui_->video()));
 	soundsources_manager_.reset(new soundsource::manager(*gui_));
@@ -313,7 +324,7 @@ void play_controller::init_managers(){
 	resources::whiteboard = whiteboard_manager_.get();
 
 	halo_manager_.reset(new halo::manager(*gui_));
-	LOG_NG << "done initializing managers... " << (SDL_GetTicks() - ticks_) << "\n";
+	LOG_NG << "done initializing managers... " << (SDL_GetTicks() - ticks_) << std::endl;
 }
 
 static int placing_score(const config& side, const gamemap& map, const map_location& pos)
@@ -355,14 +366,14 @@ void play_controller::place_sides_in_preferred_locations()
 {
 	std::vector<placing_info> placings;
 
-	int num_pos = map_.num_valid_starting_positions();
+	int num_pos = gameboard_.map_.num_valid_starting_positions();
 
 	int side_num = 1;
 	BOOST_FOREACH(const config &side, level_.child_range("side"))
 	{
 		for(int p = 1; p <= num_pos; ++p) {
-			const map_location& pos = map_.starting_position(p);
-			int score = placing_score(side, map_, pos);
+			const map_location& pos = gameboard_.map_.starting_position(p);
+			int score = placing_score(side, gameboard_.map_, pos);
 			placing_info obj;
 			obj.side = side_num;
 			obj.score = score;
@@ -380,8 +391,8 @@ void play_controller::place_sides_in_preferred_locations()
 		if(placed.count(i->side) == 0 && positions_taken.count(i->pos) == 0) {
 			placed.insert(i->side);
 			positions_taken.insert(i->pos);
-			map_.set_starting_position(i->side,i->pos);
-			LOG_NG << "placing side " << i->side << " at " << i->pos << '\n';
+			gameboard_.map_.set_starting_position(i->side,i->pos);
+			LOG_NG << "placing side " << i->side << " at " << i->pos << std::endl;
 		}
 	}
 }
@@ -405,7 +416,7 @@ void play_controller::status_table(){
 void play_controller::save_game(){
 	if(save_blocker::try_block()) {
 		save_blocker::save_unblocker unblocker;
-		savegame::ingame_savegame save(gamestate_, *gui_, to_config(), preferences::compress_saves());
+		savegame::ingame_savegame save(gamestate_, *gui_, to_config(), preferences::save_compression_format());
 		save.save_game_interactive(gui_->video(), "", gui::OK_CANCEL);
 	} else {
 		save_blocker::on_unblock(this,&play_controller::save_game);
@@ -415,7 +426,7 @@ void play_controller::save_game(){
 void play_controller::save_replay(){
 	if(save_blocker::try_block()) {
 		save_blocker::save_unblocker unblocker;
-		savegame::replay_savegame save(gamestate_, preferences::compress_saves());
+		savegame::replay_savegame save(gamestate_, preferences::save_compression_format());
 		save.save_game_interactive(gui_->video(), "", gui::OK_CANCEL);
 	} else {
 		save_blocker::on_unblock(this,&play_controller::save_replay);
@@ -453,6 +464,21 @@ void play_controller::left_mouse_click(){
 	event.state = SDL_PRESSED;
 
 	mouse_handler_.mouse_press(event, false);
+}
+
+void play_controller::select_and_action() {
+	mouse_handler_.select_or_action(browse_);
+}
+
+void play_controller::move_action(){
+	mouse_handler_.move_action(browse_);
+}
+
+void play_controller::deselect_hex(){
+	mouse_handler_.deselect_hex();
+}
+void play_controller::select_hex(){
+	mouse_handler_.select_hex(gui_->mouseover_hex(), false);
 }
 
 void play_controller::right_mouse_click(){
@@ -509,6 +535,10 @@ void play_controller::unit_description(){
 	menu_handler_.unit_description();
 }
 
+void play_controller::terrain_description(){
+	menu_handler_.terrain_description(mouse_handler_);
+}
+
 void play_controller::toggle_ellipses(){
 	menu_handler_.toggle_ellipses();
 }
@@ -521,23 +551,25 @@ void play_controller::search(){
 	menu_handler_.search();
 }
 
-void play_controller::fire_prestart(bool execute)
+void play_controller::fire_preload()
 {
 	// Run initialization scripts, even if loading from a snapshot.
 	gamedata_.set_phase(game_data::PRELOAD);
 	resources::lua_kernel->initialize();
+	gamedata_.get_variable("turn_number") = int(turn());
 	game_events::fire("preload");
-
+}
+void play_controller::fire_prestart()
+{
 	// pre-start events must be executed before any GUI operation,
 	// as those may cause the display to be refreshed.
-	if (execute){
-		update_locker lock_display(gui_->video());
-		gamedata_.set_phase(game_data::PRESTART);
-		game_events::fire("prestart");
-		check_end_level();
-		// prestart event may modify start turn with WML, reflect any changes.
-		start_turn_ = turn();
-	}
+	update_locker lock_display(gui_->video());
+	gamedata_.set_phase(game_data::PRESTART);
+	game_events::fire("prestart");
+	check_end_level();
+	// prestart event may modify start turn with WML, reflect any changes.
+	start_turn_ = turn();
+	gamedata_.get_variable("turn_number") = int(start_turn_);
 }
 
 void play_controller::fire_start(bool execute){
@@ -551,6 +583,18 @@ void play_controller::fire_start(bool execute){
 	} else {
 		it_is_a_new_turn_ = false;
 	}
+	if( gamestate_.classification().random_mode != "" && (network::nconnections() != 0))
+	{
+		std::string mes = _("MP game uses an alternative random mode, if you don't know what this message means, then most likeley someone is cheating or someone reloaded a corrupt game.");
+		resources::screen->add_chat_message(
+			time(NULL),
+			"game_engine",
+			0,
+			mes,
+			events::chat_handler::MESSAGE_PUBLIC,
+			preferences::message_bell());
+		replay::process_error(mes);
+	}
 	gamedata_.set_phase(game_data::PLAY);
 }
 
@@ -559,33 +603,37 @@ void play_controller::init_gui(){
 	gui_->update_tod();
 
 	if ( !loading_game_ ) {
-		for ( int side = teams_.size(); side != 0; --side )
+		for ( int side = gameboard_.teams().size(); side != 0; --side )
 			actions::clear_shroud(side, false, false);
 	}
 }
 
-void play_controller::init_side(const unsigned int team_index, bool is_replay){
+possible_end_play_signal play_controller::init_side(bool is_replay){
 	log_scope("player turn");
+	bool only_visual = loading_game_ && init_side_done_;
 	init_side_done_ = false;
-
-	mouse_handler_.set_side(team_index + 1);
+	mouse_handler_.set_side(player_number_);
 
 	// If we are observers we move to watch next team if it is allowed
 	if (is_observer() && !current_team().get_disallow_observers()) {
-		gui_->set_team(size_t(team_index));
+		gui_->set_team(size_t(player_number_ - 1));
 	}
-	gui_->set_playing_team(size_t(team_index));
+	gui_->set_playing_team(size_t(player_number_ - 1));
 
 	gamedata_.get_variable("side_number") = player_number_;
-	gamedata_.last_selected = map_location::null_location;
+	gamedata_.last_selected = map_location::null_location();
 
-	maybe_do_init_side(team_index, is_replay);
+	HANDLE_END_PLAY_SIGNAL( maybe_do_init_side(is_replay, only_visual) );
+
+	loading_game_ = false;
+
+	return boost::none;
 }
 
 /**
  * Called by turn_info::process_network_data() or init_side() to call do_init_side() if necessary.
  */
-void play_controller::maybe_do_init_side(const unsigned int team_index, bool is_replay) {
+void play_controller::maybe_do_init_side(bool is_replay, bool only_visual) {
 	/**
 	 * We do side init only if not done yet for a local side when we are not replaying.
 	 * For all other sides it is recorded in replay and replay handler has to handle
@@ -595,23 +643,31 @@ void play_controller::maybe_do_init_side(const unsigned int team_index, bool is_
 		return;
 	}
 
-	if (!loading_game_) recorder.init_side();
-
-	do_init_side(team_index, is_replay);
+	if(!only_visual){
+		recorder.init_side();
+		set_scontext_synced sync;
+		do_init_side(is_replay);
+	}
+	else
+	{
+		do_init_side(is_replay, true);
+	}
 }
 
 /**
  * Called by replay handler or init_side() to do actual work for turn change.
  */
-void play_controller::do_init_side(const unsigned int team_index, bool is_replay) {
+void play_controller::do_init_side(bool is_replay, bool only_visual) {
 	log_scope("player turn");
-	team& current_team = teams_[team_index];
+	//In case we might end up calling sync:network during the side turn events,
+	//and we dont want do_init_side to be called when a player drops.
+	init_side_done_ = true;
 
 	const std::string turn_num = str_cast(turn());
-	const std::string side_num = str_cast(team_index + 1);
+	const std::string side_num = str_cast(player_number_);
 
 	// If this is right after loading a game we don't need to fire events and such. It was already done before saving.
-	if (!loading_game_) {
+	if (!only_visual) {
 		if(it_is_a_new_turn_)
 		{
 			game_events::fire("turn " + turn_num);
@@ -625,35 +681,30 @@ void play_controller::do_init_side(const unsigned int team_index, bool is_replay
 		game_events::fire("side " + side_num + " turn " + turn_num);
 	}
 
-	if(current_team.is_human() && !is_replay) {
+	if(current_team().is_human() && !is_replay) {
 		update_gui_to_player(player_number_ - 1);
 	}
 	// We want to work out if units for this player should get healed,
 	// and the player should get income now.
 	// Healing/income happen if it's not the first turn of processing,
 	// or if we are loading a game.
-	if (!loading_game_ && turn() > 1) {
-		for(unit_map::iterator i = units_.begin(); i != units_.end(); ++i) {
-			if (i->side() == player_number_) {
-				i->new_turn();
-			}
-		}
-
-		current_team.new_turn();
+	if (!only_visual && turn() > 1) {
+		gameboard_.new_turn(player_number_);
+		current_team().new_turn();
 
 		// If the expense is less than the number of villages owned
 		// times the village support capacity,
 		// then we don't have to pay anything at all
 		int expense = side_upkeep(player_number_) -
-			current_team.support();
+			current_team().support();
 		if(expense > 0) {
-			current_team.spend_gold(expense);
+			current_team().spend_gold(expense);
 		}
 
 		calculate_healing(player_number_, !skip_replay_);
 	}
 
-	if (!loading_game_) {
+	if (!only_visual) {
 		// Prepare the undo stack.
 		undo_stack_->new_side_turn(player_number_);
 
@@ -668,19 +719,19 @@ void play_controller::do_init_side(const unsigned int team_index, bool is_replay
 
 	const time_of_day &tod = tod_manager_.get_time_of_day();
 
-	if (int(team_index) + 1 == first_player_)
+	if (player_number_ == first_player_)
 		sound::play_sound(tod.sounds, sound::SOUND_SOURCES);
 
 	if (!recorder.is_skipping()){
 		gui_->invalidate_all();
 	}
 
-	if (!recorder.is_skipping() && !skip_replay_ && current_team.get_scroll_to_leader()){
-		gui_->scroll_to_leader(units_, player_number_,game_display::ONSCREEN,false);
+	if (!recorder.is_skipping() && !skip_replay_ && current_team().get_scroll_to_leader()){
+		gui_->scroll_to_leader(player_number_,game_display::ONSCREEN,false);
 	}
 	loading_game_ = false;
-	init_side_done_ = true;
 
+	check_victory();
 	resources::whiteboard->on_init_side();
 }
 
@@ -689,35 +740,10 @@ config play_controller::to_config() const
 {
 	config cfg;
 
+	cfg["init_side_done"] = init_side_done_;
 	cfg.merge_attributes(level_);
 
-	for(std::vector<team>::const_iterator t = teams_.begin(); t != teams_.end(); ++t) {
-		int side_num = t - teams_.begin() + 1;
-
-		config& side = cfg.add_child("side");
-		t->write(side);
-		side["no_leader"] = true;
-		side["side"] = str_cast(side_num);
-
-		if (!linger_){
-			//current visible units
-			for(unit_map::const_iterator i = units_.begin(); i != units_.end(); ++i) {
-				if (i->side() == side_num) {
-					config& u = side.add_child("unit");
-					i->get_location().write(u);
-					i->write(u);
-				}
-			}
-		}
-		//recall list
-		{
-			for(std::vector<unit>::const_iterator j = t->recall_list().begin();
-				j != t->recall_list().end(); ++j) {
-					config& u = side.add_child("unit");
-					j->write(u);
-			}
-		}
-	}
+	gameboard_.write_config(cfg);
 
 	cfg.merge_with(tod_manager_.to_config());
 
@@ -733,7 +759,6 @@ config play_controller::to_config() const
 	}
 
 	//write out the current state of the map
-	cfg["map_data"] = map_.write();
 	cfg.merge_with(pathfind_manager_->to_config());
 
 	config display;
@@ -743,6 +768,23 @@ config play_controller::to_config() const
 	// Preserve the undo stack so that fog/shroud clearing is kept accurate.
 	undo_stack_->write(cfg.add_child("undo_stack"));
 
+	//Write the game events.
+	game_events::write_events(cfg);
+
+
+	if(gui_.get() != NULL){
+		cfg["playing_team"] = str_cast(gui_->playing_team());
+		gui_->labels().write(cfg);
+		sound::write_music_play_list(cfg);
+	}
+
+		//TODO: move id_manager handling to play_controller
+	cfg["next_underlying_unit_id"] = str_cast(n_unit::id_manager::instance().get_save_id());
+
+
+	gamedata_.write_snapshot(cfg);
+
+	cfg.merge_attributes(gamestate_.classification().to_config());
 	return cfg;
 }
 
@@ -750,20 +792,21 @@ void play_controller::finish_side_turn(){
 
 	resources::whiteboard->on_finish_side_turn(player_number_);
 
-	for(unit_map::iterator uit = units_.begin(); uit != units_.end(); ++uit) {
-		if (uit->side() == player_number_)
-			uit->end_turn();
-	}
+	gameboard_.end_turn(player_number_);
+
 	// Clear shroud, in case units had been slowed for the turn.
 	actions::clear_shroud(player_number_);
 
 	const std::string turn_num = str_cast(turn());
 	const std::string side_num = str_cast(player_number_);
-	game_events::fire("side turn end");
-	game_events::fire("side "+ side_num + " turn end");
-	game_events::fire("side turn " + turn_num + " end");
-	game_events::fire("side " + side_num + " turn " + turn_num + " end");
 
+	{ //Block for set_scontext_synced
+		set_scontext_synced sync(1);
+		game_events::fire("side turn end");
+		game_events::fire("side "+ side_num + " turn end");
+		game_events::fire("side turn " + turn_num + " end");
+		game_events::fire("side " + side_num + " turn " + turn_num + " end");
+	}
 	// This is where we refog, after all of a side's events are done.
 	actions::recalculate_fog(player_number_);
 
@@ -781,6 +824,7 @@ void play_controller::finish_side_turn(){
 
 void play_controller::finish_turn()
 {
+	set_scontext_synced sync(2);
 	const std::string turn_num = str_cast(turn());
 	game_events::fire("turn end");
 	game_events::fire("turn " + turn_num + " end");
@@ -793,49 +837,51 @@ bool play_controller::enemies_visible() const
 		return true;
 
 	// See if any enemies are visible
-	for(unit_map::const_iterator u = units_.begin(); u != units_.end(); ++u)
-		if (current_team().is_enemy(u->side()) && !gui_->fogged(u->get_location()))
+	BOOST_FOREACH(const unit & u, gameboard_.units()) {
+		if (current_team().is_enemy(u.side()) && !gui_->fogged(u.get_location())) {
 			return true;
+		}
+	}
 
 	return false;
 }
 
-bool play_controller::execute_command(hotkey::HOTKEY_COMMAND command, int index)
+bool play_controller::execute_command(const hotkey::hotkey_command& cmd, int index)
 {
+	hotkey::HOTKEY_COMMAND command = cmd.id;
 	if(index >= 0) {
 		unsigned i = static_cast<unsigned>(index);
 		if(i < savenames_.size() && !savenames_[i].empty()) {
 			// Load the game by throwing load_game_exception
 			throw game::load_game_exception(savenames_[i],false,false,false,"");
 
-		} else if (i < wml_commands_.size() && wml_commands_[i] != NULL) {
-			const events::command_disabler disable_commands;
-
-			if(gamedata_.last_selected.valid() && wml_commands_[i]->needs_select) {
-				recorder.add_event("select", gamedata_.last_selected);
-			}
-			map_location const& menu_hex = mouse_handler_.get_last_hex();
-			recorder.add_event(wml_commands_[i]->name, menu_hex);
-			if(game_events::fire(wml_commands_[i]->name, menu_hex)) {
-				// The event has mutated the gamestate
-				undo_stack_->clear();
-			}
+		} else if ( i < wml_commands_.size()  &&  wml_commands_[i] ) {
+			wml_commands_[i]->fire_event(mouse_handler_.get_last_hex());
 			return true;
 		}
 	}
-	return command_executor::execute_command(command, index);
+	int prefixlen = wml_menu_hotkey_prefix.length();
+	if(command == hotkey::HOTKEY_WML && cmd.command.compare(0, prefixlen, wml_menu_hotkey_prefix) == 0)
+	{
+		std::string name = cmd.command.substr(prefixlen);
+		const map_location& hex = mouse_handler_.get_last_hex();
+
+		gamedata_.get_wml_menu_items().fire_item(name, hex);
+		/// @todo Shouldn't the function return at this point?
+	}
+	return command_executor::execute_command(cmd, index);
 }
 
-bool play_controller::can_execute_command(hotkey::HOTKEY_COMMAND command, int index) const
+bool play_controller::can_execute_command(const hotkey::hotkey_command& cmd, int index) const
 {
 	if(index >= 0) {
 		unsigned i = static_cast<unsigned>(index);
 		if((i < savenames_.size() && !savenames_[i].empty())
-		|| (i < wml_commands_.size() && wml_commands_[i] != NULL)) {
+		|| (i < wml_commands_.size() && wml_commands_[i])) {
 			return true;
 		}
 	}
-	switch(command) {
+	switch(cmd.id) {
 
 	// Commands we can always do:
 	case hotkey::HOTKEY_LEADER:
@@ -866,14 +912,21 @@ bool play_controller::can_execute_command(hotkey::HOTKEY_COMMAND command, int in
 	case hotkey::HOTKEY_CUSTOM_CMD:
 	case hotkey::HOTKEY_AI_FORMULA:
 	case hotkey::HOTKEY_CLEAR_MSG:
-	case hotkey::HOTKEY_LEFT_MOUSE_CLICK:
-	case hotkey::HOTKEY_RIGHT_MOUSE_CLICK:
-	case hotkey::HOTKEY_MINIMAP_COLOR_CODING:
+	case hotkey::HOTKEY_SELECT_HEX:
+	case hotkey::HOTKEY_DESELECT_HEX:
+	case hotkey::HOTKEY_MOVE_ACTION:
+	case hotkey::HOTKEY_SELECT_AND_ACTION:
+	case hotkey::HOTKEY_MINIMAP_CODING_TERRAIN:
+	case hotkey::HOTKEY_MINIMAP_CODING_UNIT:
+	case hotkey::HOTKEY_MINIMAP_DRAW_UNITS:
+	case hotkey::HOTKEY_MINIMAP_DRAW_TERRAIN:
+	case hotkey::HOTKEY_MINIMAP_DRAW_VILLAGES:
+	case hotkey::HOTKEY_NULL:
+	case hotkey::HOTKEY_SAVE_REPLAY:
 		return true;
 
 	// Commands that have some preconditions:
 	case hotkey::HOTKEY_SAVE_GAME:
-	case hotkey::HOTKEY_SAVE_REPLAY:
 		return !events::commands_disabled;
 
 	case hotkey::HOTKEY_SHOW_ENEMY_MOVES:
@@ -892,14 +945,17 @@ bool play_controller::can_execute_command(hotkey::HOTKEY_COMMAND command, int in
 		return !linger_ && undo_stack_->can_undo() && !events::commands_disabled && !browse_;
 
 	case hotkey::HOTKEY_UNIT_DESCRIPTION:
-		return menu_handler_.current_unit() != units_.end();
+		return menu_handler_.current_unit().valid();
+
+	case hotkey::HOTKEY_TERRAIN_DESCRIPTION:
+		return mouse_handler_.get_last_hex().valid();
 
 	case hotkey::HOTKEY_RENAME_UNIT:
 		return !events::commands_disabled &&
-			menu_handler_.current_unit() != units_.end() &&
+			menu_handler_.current_unit().valid() &&
 			!(menu_handler_.current_unit()->unrenamable()) &&
 			menu_handler_.current_unit()->side() == gui_->viewing_side() &&
-			teams_[menu_handler_.current_unit()->side() - 1].is_human();
+			gameboard_.teams()[menu_handler_.current_unit()->side() - 1].is_human();
 
 	default:
 		return false;
@@ -935,7 +991,7 @@ void play_controller::enter_textbox()
 		break;
 	default:
 		menu_handler_.get_textbox().close(*gui_);
-		ERR_DP << "unknown textbox mode\n";
+		ERR_DP << "unknown textbox mode" << std::endl;
 	}
 
 }
@@ -948,10 +1004,10 @@ void play_controller::tab()
 	switch(mode) {
 	case gui::TEXTBOX_SEARCH:
 	{
-		BOOST_FOREACH(const unit &u, units_){
+		BOOST_FOREACH(const unit &u, gameboard_.units()){
 			const map_location& loc = u.get_location();
 			if(!gui_->fogged(loc) &&
-					!(teams_[gui_->viewing_team()].is_enemy(u.side()) && u.invisible(loc)))
+					!(gameboard_.teams()[gui_->viewing_team()].is_enemy(u.side()) && u.invisible(loc)))
 				dictionary.insert(u.name());
 		}
 		//TODO List map labels
@@ -965,7 +1021,7 @@ void play_controller::tab()
 	}
 	case gui::TEXTBOX_MESSAGE:
 	{
-		BOOST_FOREACH(const team& t, teams_) {
+		BOOST_FOREACH(const team& t, gameboard_.teams()) {
 			if(!t.is_empty())
 				dictionary.insert(t.current_player());
 		}
@@ -981,7 +1037,7 @@ void play_controller::tab()
 	}
 
 	default:
-		ERR_DP << "unknown textbox mode\n";
+		ERR_DP << "unknown textbox mode" << std::endl;
 	} //switch(mode)
 
 	menu_handler_.get_textbox().tab(dictionary);
@@ -1010,37 +1066,34 @@ std::string play_controller::get_unique_saveid(const config& cfg, std::set<std::
 
 team& play_controller::current_team()
 {
-	assert(player_number_ > 0 && player_number_ <= int(teams_.size()));
-	return teams_[player_number_-1];
+	assert(player_number_ > 0 && player_number_ <= int(gameboard_.teams().size()));
+	return gameboard_.teams_[player_number_-1];
 }
 
 const team& play_controller::current_team() const
 {
-	assert(player_number_ > 0 && player_number_ <= int(teams_.size()));
-	return teams_[player_number_-1];
+	assert(player_number_ > 0 && player_number_ <= int(gameboard_.teams().size()));
+	return gameboard_.teams()[player_number_-1];
 }
 
-int play_controller::find_human_team_before(const size_t team_num) const
+int play_controller::find_human_team_before_current_player() const
 {
-	if (team_num > teams_.size())
+	if (player_number_ > int(gameboard_.teams().size()))
 		return -2;
 
-	int human_side = -2;
-	for (int i = team_num-2; i > -1; --i) {
-		if (teams_[i].is_human()) {
-			human_side = i;
-			break;
+	for (int i = player_number_-2; i >= 0; --i) {
+		if (gameboard_.teams()[i].is_human()) {
+			return i+1;
 		}
 	}
-	if (human_side == -2) {
-		for (size_t i = teams_.size()-1; i > team_num-1; --i) {
-			if (teams_[i].is_human()) {
-				human_side = i;
-				break;
-			}
+
+	for (int i = gameboard_.teams().size()-1; i > player_number_-1; --i) {
+		if (gameboard_.teams()[i].is_human()) {
+			return i+1;
 		}
 	}
-	return human_side+1;
+
+	return -1;
 }
 
 void play_controller::slice_before_scroll() {
@@ -1089,12 +1142,12 @@ void play_controller::process_keyup_event(const SDL_Event& event) {
 
 			const unit_map::iterator u = mouse_handler_.selected_unit();
 
-			if(u != units_.end()) {
+			if(u.valid()) {
 				// if it's not the unit's turn, we reset its moves
 				unit_movement_resetter move_reset(*u, u->side() != player_number_);
 
 				mouse_handler_.set_current_paths(pathfind::paths(*u, false,
-				                       true, teams_[gui_->viewing_team()],
+				                       true, gameboard_.teams_[gui_->viewing_team()],
 				                       mouse_handler_.get_path_turns()));
 
 				gui_->highlight_reach(mouse_handler_.current_paths());
@@ -1125,6 +1178,9 @@ static void trim_items(std::vector<std::string>& newitems) {
 
 void play_controller::expand_autosaves(std::vector<std::string>& items)
 {
+	const compression::format comp_format =
+		preferences::save_compression_format();
+
 	savenames_.clear();
 	for (unsigned int i = 0; i < items.size(); ++i) {
 		if (items[i] == "AUTOSAVES") {
@@ -1133,23 +1189,17 @@ void play_controller::expand_autosaves(std::vector<std::string>& items)
 			std::vector<std::string> newsaves;
 			for (unsigned int turn = this->turn(); turn != 0; turn--) {
 				std::string name = gamestate_.classification().label + "-" + _("Auto-Save") + lexical_cast<std::string>(turn);
-				if (savegame::save_game_exists(name, preferences::compress_saves())) {
-					if(preferences::compress_saves()) {
-						newsaves.push_back(name + (preferences::bzip2_savegame_compression() ? ".bz2" : ".gz"));
-					} else {
-						newsaves.push_back(name);
-					}
+				if (savegame::save_game_exists(name, comp_format)) {
+					newsaves.push_back(
+						name + compression::format_extension(comp_format));
 					newitems.push_back(_("Back to Turn ") + lexical_cast<std::string>(turn));
 				}
 			}
 
 			const std::string& start_name = gamestate_.classification().label;
-			if(savegame::save_game_exists(start_name, preferences::compress_saves())) {
-				if(preferences::compress_saves()) {
-					newsaves.push_back(start_name + (preferences::bzip2_savegame_compression() ? ".bz2" : ".gz"));
-				} else {
-					newsaves.push_back(start_name);
-				}
+			if(savegame::save_game_exists(start_name, comp_format)) {
+				newsaves.push_back(
+					start_name + compression::format_extension(comp_format));
 				newitems.push_back(_("Back to Start"));
 			}
 
@@ -1165,73 +1215,51 @@ void play_controller::expand_autosaves(std::vector<std::string>& items)
 		savenames_.push_back("");
 	}
 }
-
+///replaces "wml" in @items with all active wml menu items for the current field
 void play_controller::expand_wml_commands(std::vector<std::string>& items)
 {
 	wml_commands_.clear();
 	for (unsigned int i = 0; i < items.size(); ++i) {
 		if (items[i] == "wml") {
-			items.erase(items.begin() + i);
-			std::map<std::string, wml_menu_item*>& gs_wmi = gamedata_.get_wml_menu_items().get_menu_items();
-			if(gs_wmi.empty())
-				break;
 			std::vector<std::string> newitems;
 
-			const map_location& hex = mouse_handler_.get_last_hex();
-			gamedata_.get_variable("x1") = hex.x + 1;
-			gamedata_.get_variable("y1") = hex.y + 1;
-			scoped_xy_unit highlighted_unit("unit", hex.x, hex.y, units_);
-
-			std::map<std::string, wml_menu_item*>::iterator itor;
-			for (itor = gs_wmi.begin(); itor != gs_wmi.end()
-				&& newitems.size() < MAX_WML_COMMANDS; ++itor) {
-				config& show_if = itor->second->show_if;
-				config filter_location = itor->second->filter_location;
-				if ((show_if.empty()
-					|| game_events::conditional_passed(vconfig(show_if)))
-				&& (filter_location.empty()
-					|| terrain_filter(vconfig(filter_location), units_)(hex))
-				&& (!itor->second->needs_select
-					|| gamedata_.last_selected.valid()))
-				{
-					wml_commands_.push_back(itor->second);
-					std::string newitem = itor->second->description;
-
-					// Prevent accidental hotkey binding by appending a space
-					newitem.push_back(' ');
-					newitems.push_back(newitem);
-				}
-			}
+			// Replace this placeholder entry with available menu items.
+			items.erase(items.begin() + i);
+			gamedata_.get_wml_menu_items().get_items(mouse_handler_.get_last_hex(),
+			                                         wml_commands_, newitems);
 			items.insert(items.begin()+i, newitems.begin(), newitems.end());
+			// End the "for" loop.
 			break;
 		}
-		wml_commands_.push_back(NULL);
+		// Pad the commands with null pointers (keeps the indices of items and
+		// wml_commands_ synced).
+		wml_commands_.push_back(const_item_ptr());
 	}
 }
 
 void play_controller::show_menu(const std::vector<std::string>& items_arg, int xloc, int yloc, bool context_menu, display& disp)
 {
 	std::vector<std::string> items = items_arg;
-	hotkey::HOTKEY_COMMAND command;
+	const hotkey::hotkey_command* cmd;
 	std::vector<std::string>::iterator i = items.begin();
 	while(i != items.end()) {
 		if (*i == "AUTOSAVES") {
 			// Autosave visibility is similar to LOAD_GAME hotkey
-			command = hotkey::HOTKEY_LOAD_GAME;
+			cmd = &hotkey::hotkey_command::get_command_by_command(hotkey::HOTKEY_LOAD_GAME);
 		} else {
-			command = hotkey::get_id(*i);
+			cmd = &hotkey::get_hotkey_command(*i);
 		}
 		// Remove WML commands if they would not be allowed here
 		if(*i == "wml") {
 			if(!context_menu || gui_->viewing_team() != gui_->playing_team()
-			|| events::commands_disabled || !teams_[gui_->viewing_team()].is_human()
+			|| events::commands_disabled || !gameboard_.teams()[gui_->viewing_team()].is_human()
 			|| (linger_ && !game_config::debug)){
 				i = items.erase(i);
 				continue;
 			}
 		// Remove commands that can't be executed or don't belong in this type of menu
-		} else if(!can_execute_command(command)
-		|| (context_menu && !in_context_menu(command))) {
+		} else if(!can_execute_command(*cmd)
+			|| (context_menu && !in_context_menu(cmd->id))) {
 			i = items.erase(i);
 			continue;
 		}
@@ -1261,19 +1289,19 @@ bool play_controller::in_context_menu(hotkey::HOTKEY_COMMAND command) const
 
 		// A quick check to save us having to create the future map and
 		// possibly loop through all units.
-		if ( !resources::game_map->is_keep(last_hex)  &&
-		     !resources::game_map->is_castle(last_hex) )
+		if ( !resources::gameboard->map().is_keep(last_hex)  &&
+		     !resources::gameboard->map().is_castle(last_hex) )
 			return false;
 
-		wb::future_map future; //< lasts until method returns.
+		wb::future_map future; /* lasts until method returns. */
 
-		unit_map::const_iterator leader = units_.find(last_hex);
-		if ( leader != units_.end() )
+		unit_map::const_iterator leader = gameboard_.units().find(last_hex);
+		if ( leader != gameboard_.units().end() )
 			return leader->can_recruit()  &&  leader->side() == viewing_side  &&
 			       can_recruit_from(*leader);
 		else
 			// Look for a leader who can recruit on last_hex.
-			for ( leader = units_.begin(); leader != units_.end(); ++leader) {
+			for ( leader = gameboard_.units().begin(); leader != gameboard_.units().end(); ++leader) {
 				if ( leader->can_recruit()  &&  leader->side() == viewing_side  &&
 				     can_recruit_on(*leader, last_hex) )
 					return true;
@@ -1289,9 +1317,9 @@ bool play_controller::in_context_menu(hotkey::HOTKEY_COMMAND command) const
 std::string play_controller::get_action_image(hotkey::HOTKEY_COMMAND command, int index) const
 {
 	if(index >= 0 && index < static_cast<int>(wml_commands_.size())) {
-		wml_menu_item* const& wmi = wml_commands_[index];
-		if(wmi != NULL) {
-			return wmi->image.empty() ? game_config::images::wml_menu : wmi->image;
+		const const_item_ptr wmi = wml_commands_[index];
+		if ( wmi ) {
+			return wmi->image();
 		}
 	}
 	return command_executor::get_action_image(command, index);
@@ -1300,8 +1328,21 @@ std::string play_controller::get_action_image(hotkey::HOTKEY_COMMAND command, in
 hotkey::ACTION_STATE play_controller::get_action_state(hotkey::HOTKEY_COMMAND command, int /*index*/) const
 {
 	switch(command) {
+
+	case hotkey::HOTKEY_MINIMAP_DRAW_VILLAGES:
+		return (preferences::minimap_draw_villages()) ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
+	case hotkey::HOTKEY_MINIMAP_CODING_UNIT:
+		return (preferences::minimap_movement_coding()) ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
+	case hotkey::HOTKEY_MINIMAP_CODING_TERRAIN:
+		return (preferences::minimap_terrain_coding()) ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
+	case hotkey::HOTKEY_MINIMAP_DRAW_UNITS:
+		return (preferences::minimap_draw_units()) ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
+	case hotkey::HOTKEY_MINIMAP_DRAW_TERRAIN:
+		return (preferences::minimap_draw_terrain()) ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
+	case hotkey::HOTKEY_ZOOM_DEFAULT:
+		return (gui_->get_zoom_factor() == 1.0) ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
 	case hotkey::HOTKEY_DELAY_SHROUD:
-		return teams_[gui_->viewing_team()].auto_shroud_updates() ? hotkey::ACTION_OFF : hotkey::ACTION_ON;
+		return gameboard_.teams()[gui_->viewing_team()].auto_shroud_updates() ? hotkey::ACTION_OFF : hotkey::ACTION_ON;
 	default:
 		return hotkey::ACTION_STATELESS;
 	}
@@ -1342,68 +1383,96 @@ void play_controller::set_defeat_music_list(const std::string& list)
 
 void play_controller::check_victory()
 {
-	check_end_level();
-
-	std::vector<unsigned> seen_leaders;
-	for (unit_map::const_iterator i = units_.begin(),
-	     i_end = units_.end(); i != i_end; ++i)
+	if(linger_)
 	{
-		if (i->can_recruit()) {
-			DBG_NG << "seen leader for side " << i->side() << "\n";
-			seen_leaders.push_back(i->side());
+		return;
+	}
+	std::set<unsigned> not_defeated;
+
+	BOOST_FOREACH( const unit & i , gameboard_.units())
+	{
+		const team& tm = gameboard_.teams()[i.side()-1];
+		if (i.can_recruit() && tm.defeat_condition() == team::NO_LEADER) {
+			not_defeated.insert(i.side());
+		} else if (tm.defeat_condition() == team::NO_UNITS) {
+			not_defeated.insert(i.side());
 		}
 	}
 
-	// Clear villages for teams that have no leader
-	for (std::vector<team>::iterator tm_beg = teams_.begin(), tm = tm_beg,
-	     tm_end = teams_.end(); tm != tm_end; ++tm)
+	BOOST_FOREACH(team& tm, gameboard_.teams_)
 	{
-		if (std::find(seen_leaders.begin(), seen_leaders.end(), tm - tm_beg + 1) == seen_leaders.end()) {
-			tm->clear_villages();
+		if(tm.defeat_condition() == team::NEVER)
+		{
+			not_defeated.insert(tm.side());
+		}
+		// Clear villages for teams that have no leader and
+		// mark side as lost if it should be removed from carryover.
+		if (not_defeated.find(tm.side()) == not_defeated.end())
+		{
+			tm.clear_villages();
 			// invalidate_all() is overkill and expensive but this code is
 			// run rarely so do it the expensive way.
 			gui_->invalidate_all();
+
+			if (remove_from_carryover_on_defeat_)
+			{
+				tm.set_lost();
+			}
 		}
 	}
 
+	check_end_level();
+
 	bool found_player = false;
+	bool found_network_player = false;
 
-	for (size_t n = 0; n != seen_leaders.size(); ++n) {
-		size_t side = seen_leaders[n] - 1;
+	for (std::set<unsigned>::iterator n = not_defeated.begin(); n != not_defeated.end(); ++n) {
+		size_t side = *n - 1;
 
-		for (size_t m = n +1 ; m != seen_leaders.size(); ++m) {
-			if (teams_[side].is_enemy(seen_leaders[m])) {
+		std::set<unsigned>::iterator m(n);
+		for (++m; m != not_defeated.end(); ++m) {
+			if (gameboard_.teams()[side].is_enemy(*m)) {
 				return;
 			}
 		}
 
-		if (teams_[side].is_human()) {
+		if (gameboard_.teams()[side].is_human()) {
 			found_player = true;
+		}
+
+		if (gameboard_.teams()[side].is_network()) {
+			found_network_player = true;
 		}
 	}
 
-	if (found_player) {
+	if (found_player || found_network_player) {
 		game_events::fire("enemies defeated");
 		check_end_level();
 	}
 
-	if (!victory_when_enemies_defeated_ && (found_player || is_observer())) {
+	DBG_NG << "victory_when_enemies_defeated: " << victory_when_enemies_defeated_ << std::endl;
+	DBG_NG << "found_player: " << found_player << std::endl;
+	DBG_NG << "found_network_player: " << found_network_player << std::endl;
+
+	if (!victory_when_enemies_defeated_ && (found_player || found_network_player)) {
 		// This level has asked not to be ended by this condition.
 		return;
 	}
 
 	if (non_interactive()) {
-		std::cout << "winner: ";
-		BOOST_FOREACH(unsigned l, seen_leaders) {
+		LOG_AIT << "winner: ";
+		BOOST_FOREACH(unsigned l, not_defeated) {
 			std::string ai = ai::manager::get_active_ai_identifier_for_side(l);
 			if (ai.empty()) ai = "default ai";
-			std::cout << l << " (using " << ai << ") ";
+			LOG_AIT << l << " (using " << ai << ") ";
 		}
-		std::cout << '\n';
-		ai_testing::log_victory(seen_leaders);
+		LOG_AIT << std::endl;
+		ai_testing::log_victory(not_defeated);
 	}
 
-	DBG_NG << "throwing end level exception...\n";
+	DBG_NG << "throwing end level exception..." << std::endl;
+	//Also proceed to the next scenario when another player survived.
+	end_level_data_.proceed_to_next_level = found_player || found_network_player;
 	throw end_level_exception(found_player ? VICTORY : DEFEAT);
 }
 
@@ -1415,9 +1484,13 @@ void play_controller::process_oos(const std::string& msg) const
 	message << _("The game is out of sync. It might not make much sense to continue. Do you want to save your game?");
 	message << "\n\n" << _("Error details:") << "\n\n" << msg;
 
-	savegame::oos_savegame save(to_config());
+	savegame::oos_savegame save(gamestate_, *gui_, to_config());
 	save.save_game_interactive(resources::screen->video(), message.str(), gui::YES_NO); // can throw end_level_exception
 }
+
+//this should be at the end of the file but it caused merging problems there.
+const std::string play_controller::wml_menu_hotkey_prefix = "wml_menu:";
+
 
 void play_controller::update_gui_to_player(const int team_index, const bool observe)
 {
@@ -1426,4 +1499,36 @@ void play_controller::update_gui_to_player(const int team_index, const bool obse
 	gui_->invalidate_all();
 	gui_->draw(true,true);
 }
+
+void play_controller::toggle_accelerated_speed()
+{
+	preferences::set_turbo(!preferences::turbo());
+
+	if (preferences::turbo())
+	{
+		utils::string_map symbols;
+		symbols["hk"] = hotkey::get_names(hotkey::hotkey_command::get_command_by_command(hotkey::HOTKEY_ACCELERATED).command);
+		gui_->announce(_("Accelerated speed enabled!"), font::NORMAL_COLOR);
+		gui_->announce("\n" + vgettext("(press $hk to disable)", symbols), font::NORMAL_COLOR);
+	}
+	else
+	{
+		gui_->announce(_("Accelerated speed disabled!"), font::NORMAL_COLOR);
+	}
+}
+
+void play_controller::do_autosave()
+{
+	savegame::autosave_savegame save(gamestate_, *gui_, to_config(), preferences::save_compression_format());
+	save.autosave(false, preferences::autosavemax(), preferences::INFINITE_AUTO_SAVES);
+}
+
+
+void play_controller::do_consolesave(const std::string& filename)
+{
+	savegame::ingame_savegame save(gamestate_, *gui_,
+	                               to_config(), preferences::save_compression_format());
+	save.save_game_automatic(gui_->video(), true, filename);
+}
+
 

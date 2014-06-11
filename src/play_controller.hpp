@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playlevel Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -18,6 +18,7 @@
 
 #include "controller_base.hpp"
 #include "game_end_exceptions.hpp"
+#include "game_board.hpp"
 #include "help.hpp"
 #include "menu_events.hpp"
 #include "mouse_events.hpp"
@@ -27,19 +28,20 @@
 #include "gamestatus.hpp"
 
 #include <boost/scoped_ptr.hpp>
+#include <boost/shared_ptr.hpp>
 
 class game_display;
-class game_state;
+class saved_game;
 class game_data;
 class team;
-struct wml_menu_item;
 
 namespace actions {
 	class undo_list;
 }
 
 namespace game_events {
-	struct manager;
+	class  manager;
+	class  wml_menu_item;
 } // namespace game_events
 
 namespace halo {
@@ -66,11 +68,12 @@ namespace wb {
 	class manager; // whiteboard manager
 } // namespace wb
 
+
 class play_controller : public controller_base, public events::observer, public savegame::savegame_config
 {
 public:
-	play_controller(const config& level, game_state& state_of_game,
-		const int ticks, const int num_turns, const config& game_config,
+	play_controller(const config& level, saved_game& state_of_game,
+		const int ticks, const config& game_config,
 		CVideo& video, bool skip_replay);
 	virtual ~play_controller();
 
@@ -83,6 +86,10 @@ public:
 	virtual void show_statistics();
 	virtual void unit_list();
 	virtual void left_mouse_click();
+	virtual void move_action();
+	virtual void select_and_action();
+	virtual void select_hex();
+	virtual void deselect_hex();
 	virtual void right_mouse_click();
 	virtual void status_table();
 	virtual void save_game();
@@ -99,17 +106,20 @@ public:
 	virtual void show_enemy_moves(bool ignore_units);
 	virtual void goto_leader();
 	virtual void unit_description();
+	virtual void terrain_description();
 	virtual void toggle_ellipses();
 	virtual void toggle_grid();
 	virtual void search();
+	virtual void toggle_accelerated_speed();
 
-	virtual void maybe_do_init_side(const unsigned int team_index, bool is_replay = false);
-	virtual void do_init_side(const unsigned int team_index, bool is_replay = false);
-	virtual void play_side(const unsigned int side_number, bool save) = 0;
+	void maybe_do_init_side(bool is_replay = false, bool only_visual = false);
+	void do_init_side(bool is_replay = false, bool only_visual = false);
 
 	virtual void force_end_turn() = 0;
 	virtual void force_end_level(LEVEL_RESULT res) = 0;
 	virtual void check_end_level() = 0;
+
+	virtual void on_not_observer() = 0;
 	/**
 	 * Asks the user whether to continue on an OOS error.
 	 * @throw end_level_exception If the user wants to abort.
@@ -117,7 +127,9 @@ public:
 	virtual void process_oos(const std::string& msg) const;
 
 	void set_victory_when_enemies_defeated(bool e)
-	{ victory_when_enemies_defeated_ = e; }
+		{ victory_when_enemies_defeated_ = e; }
+	void set_remove_from_carryover_on_defeat(bool e)
+		{ remove_from_carryover_on_defeat_= e; }
 	end_level_data& get_end_level_data() {
 		return end_level_data_;
 	}
@@ -125,10 +137,10 @@ public:
 		return end_level_data_;
 	}
 	const std::vector<team>& get_teams_const() const {
-		return teams_;
+		return gameboard_.teams_;
 	}
 	const gamemap& get_map_const() const{
-		return map_;
+		return gameboard_.map_;
 	}
 	const tod_manager& get_tod_manager_const() const{
 			return tod_manager_;
@@ -150,10 +162,15 @@ public:
 	bool is_skipping_replay() const { return skip_replay_;}
 	bool is_linger_mode() const { return linger_; }
 
+	void do_autosave();
+
+	void do_consolesave(const std::string& filename);
+
 	events::mouse_handler& get_mouse_handler_base();
 	events::menu_handler& get_menu_handler() { return menu_handler_; }
 
 	std::map< std::string, std::vector<unit_animation> > animation_cache;
+	static const std::string wml_menu_hotkey_prefix;
 protected:
 	void slice_before_scroll();
 
@@ -166,8 +183,8 @@ protected:
 	virtual std::string get_action_image(hotkey::HOTKEY_COMMAND, int index) const;
 	virtual hotkey::ACTION_STATE get_action_state(hotkey::HOTKEY_COMMAND command, int index) const;
 	/** Check if a command can be executed. */
-	virtual bool can_execute_command(hotkey::HOTKEY_COMMAND command, int index=-1) const;
-	virtual bool execute_command(hotkey::HOTKEY_COMMAND command, int index=-1);
+	virtual bool can_execute_command(const hotkey::hotkey_command& command, int index=-1) const;
+	virtual bool execute_command(const hotkey::hotkey_command& command, int index=-1);
 	void show_menu(const std::vector<std::string>& items_arg, int xloc, int yloc, bool context_menu, display& disp);
 
 	/**
@@ -177,13 +194,15 @@ protected:
 	bool in_context_menu(hotkey::HOTKEY_COMMAND command) const;
 
 	void init_managers();
-	void fire_prestart(bool execute);
+	///preload events cannot be synced
+	void fire_preload();
+	void fire_prestart();
 	void fire_start(bool execute);
 	virtual void init_gui();
-	virtual void init_side(const unsigned int team_index, bool is_replay = false);
+	possible_end_play_signal init_side(bool is_replay = false);
 	void place_sides_in_preferred_locations();
 	virtual void finish_side_turn();
-	void finish_turn();
+	void finish_turn(); //this should not throw an end turn or end level exception
 	bool enemies_visible() const;
 
 	void enter_textbox();
@@ -194,8 +213,8 @@ protected:
 	team& current_team();
 	const team& current_team() const;
 
-	/** Find a human team (ie one we own) starting backwards from 'team_num'. */
-	int find_human_team_before(const size_t team) const;
+	/** Find a human team (ie one we own) starting backwards from current player. */
+	int find_human_team_before_current_player() const;
 
 	//managers
 	boost::scoped_ptr<preferences::display_manager> prefs_disp_manager_;
@@ -204,6 +223,11 @@ protected:
 	boost::scoped_ptr<halo::manager> halo_manager_;
 	font::floating_label_context labels_manager_;
 	help::help_manager help_manager_;
+
+	//this must be before mouse_handler and menu_handler or we segfault
+	game_board gameboard_;
+
+	//more managers
 	events::mouse_handler mouse_handler_;
 	events::menu_handler menu_handler_;
 	boost::scoped_ptr<soundsource::manager> soundsources_manager_;
@@ -215,11 +239,8 @@ protected:
 	boost::scoped_ptr<game_display> gui_;
 	const statistics::scenario_context statistics_context_;
 	const config& level_;
-	std::vector<team> teams_;
-	game_state& gamestate_;
+	saved_game& gamestate_;
 	game_data gamedata_;
-	gamemap map_;
-	unit_map units_;
 	/// undo_stack_ is never NULL. It is implemented as a pointer so that
 	/// undo_list can be an incomplete type at this point (which reduces the
 	/// number of files that depend on actions/undo.hpp).
@@ -237,7 +258,6 @@ protected:
 	int player_number_;
 	int first_player_;
 	unsigned int start_turn_;
-	bool is_host_;
 	bool skip_replay_;
 	bool linger_;
 	bool it_is_a_new_turn_;
@@ -255,19 +275,26 @@ protected:
 	void update_gui_to_player(const int team_index, const bool observe = false);
 
 private:
+	/// A smart pointer used when retrieving menu items.
+	typedef boost::shared_ptr<const game_events::wml_menu_item> const_item_ptr;
+
 	void init(CVideo &video);
 	// Expand AUTOSAVES in the menu items, setting the real savenames.
 	void expand_autosaves(std::vector<std::string>& items);
+
 	std::vector<std::string> savenames_;
 
 	void expand_wml_commands(std::vector<std::string>& items);
-	std::vector<wml_menu_item *> wml_commands_;
-	static const size_t MAX_WML_COMMANDS = 7;
+	std::vector<const_item_ptr> wml_commands_;
 
 	bool victory_when_enemies_defeated_;
+	bool remove_from_carryover_on_defeat_;
 	end_level_data end_level_data_;
 	std::vector<std::string> victory_music_;
 	std::vector<std::string> defeat_music_;
+
+	hotkey::scope_changer scope_;
+
 };
 
 

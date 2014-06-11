@@ -1,6 +1,6 @@
 /*
    Copyright (C) 2003 by David White <dave@whitevine.net>
-                 2004 - 2013 by Guillaume Melquiond <guillaume.melquiond@gmail.com>
+                 2004 - 2014 by Guillaume Melquiond <guillaume.melquiond@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -75,7 +75,12 @@ public:
 };
 
 bool set_log_domain_severity(std::string const &name, int severity);
+bool set_log_domain_severity(std::string const &name, const logger &lg);
 std::string list_logdomains(const std::string& filter);
+
+void set_strict_severity(int severity);
+void set_strict_severity(const logger &lg);
+bool broke_strict();
 
 class logger {
 	char const *name_;
@@ -89,9 +94,20 @@ public:
 	{
 		return severity_ > domain.domain_->second;
 	}
+
+	int get_severity() const
+	{
+		return severity_;
+	}
+
+	std::string get_name() const
+	{
+		return name_;
+	}
 };
 
 void timestamps(bool);
+void precise_timestamps(bool);
 std::string get_timestamp(const time_t& t, const std::string& format="%Y%m%d %H:%M:%S ");
 std::string get_timespan(const time_t& t);
 

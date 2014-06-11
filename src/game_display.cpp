@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -19,8 +19,9 @@
 
 #include "global.hpp"
 
+#include "game_board.hpp"
 #include "game_display.hpp"
-
+#include "gettext.hpp"
 #include "wesconfig.h"
 
 #ifdef HAVE_LIBDBUS
@@ -60,10 +61,11 @@ static lg::log_domain log_engine("engine");
 
 std::map<map_location,fixed_t> game_display::debugHighlights_;
 
-game_display::game_display(unit_map& units, CVideo& video, const gamemap& map,
-		const tod_manager& tod, const std::vector<team>& t,
+game_display::game_display(game_board& board, CVideo& video,
+		const tod_manager& tod,
 		const config& theme_cfg, const config& level) :
-		display(&units, video, &map, &t, theme_cfg, level),
+		display(&board, video, theme_cfg, level),
+		overlay_map_(),
 		fake_units_(),
 		attack_indicator_src_(),
 		attack_indicator_dst_(),
@@ -71,36 +73,33 @@ game_display::game_display(unit_map& units, CVideo& video, const gamemap& map,
 		tod_manager_(tod),
 		level_(level),
 		displayedUnitHex_(),
-//		overlays_(),
 		sidebarScaling_(1.0),
 		first_turn_(true),
 		in_game_(false),
 		observers_(),
 		chat_messages_(),
-		reach_map_(),
-		reach_map_old_(),
-		reach_map_changed_(true),
 		game_mode_(RUNNING)
 {
-
+	replace_overlay_map(&overlay_map_);
 	clear_screen();
 }
 
 game_display* game_display::create_dummy_display(CVideo& video)
 {
-	static unit_map dummy_umap;
 	static config dummy_cfg;
-	static gamemap dummy_map(dummy_cfg, "");
-	static tod_manager dummy_tod(dummy_cfg, 0);
-	static std::vector<team> dummy_teams;
-	return new game_display(dummy_umap, video, dummy_map, dummy_tod,
-			dummy_teams, dummy_cfg, dummy_cfg);
+	static config dummy_cfg2;
+	static game_board dummy_board(dummy_cfg, dummy_cfg2);
+	static tod_manager dummy_tod(dummy_cfg);
+	return new game_display(dummy_board, video, dummy_tod,
+			dummy_cfg, dummy_cfg);
 }
 
 game_display::~game_display()
 {
+	try {
 	// SDL_FreeSurface(minimap_);
 	prune_chat_messages(true);
+	} catch (...) {}
 }
 
 void game_display::new_turn()
@@ -164,17 +163,17 @@ void game_display::select_hex(map_location hex)
 
 void game_display::highlight_hex(map_location hex)
 {
-	wb::future_map future; //< Lasts for whole method.
+	wb::future_map future; /**< Lasts for whole method. */
 
-	const unit *u = get_visible_unit(hex, (*teams_)[viewing_team()], !viewpoint_);
+	const unit *u = resources::gameboard->get_visible_unit(hex, dc_->teams()[viewing_team()], !viewpoint_);
 	if (u) {
 		displayedUnitHex_ = hex;
 		invalidate_unit();
 	} else {
-		u = get_visible_unit(mouseoverHex_, (*teams_)[viewing_team()], !viewpoint_);
+		u = resources::gameboard->get_visible_unit(mouseoverHex_, dc_->teams()[viewing_team()], !viewpoint_);
 		if (u) {
 			// mouse moved from unit hex to non-unit hex
-			if (units_->count(selectedHex_)) {
+			if (dc_->units().count(selectedHex_)) {
 				displayedUnitHex_ = selectedHex_;
 				invalidate_unit();
 			}
@@ -191,9 +190,9 @@ void game_display::display_unit_hex(map_location hex)
 	if (!hex.valid())
 		return;
 
-	wb::future_map future; //< Lasts for whole method.
+	wb::future_map future; /**< Lasts for whole method. */
 
-	const unit *u = get_visible_unit(hex, (*teams_)[viewing_team()], !viewpoint_);
+	const unit *u = resources::gameboard->get_visible_unit(hex, dc_->teams()[viewing_team()], !viewpoint_);
 	if (u) {
 		displayedUnitHex_ = hex;
 		invalidate_unit();
@@ -208,11 +207,11 @@ void game_display::invalidate_unit_after_move(const map_location& src, const map
 	}
 }
 
-void game_display::scroll_to_leader(unit_map& units, int side, SCROLL_TYPE scroll_type,bool force)
+void game_display::scroll_to_leader(int side, SCROLL_TYPE scroll_type,bool force)
 {
-	unit_map::const_iterator leader = units.find_leader(side);
+	unit_map::const_iterator leader = dc_->units().find_leader(side);
 
-	if(leader != units_->end()) {
+	if(leader.valid()) {
 		// YogiHH: I can't see why we need another key_handler here,
 		// therefore I will comment it out :
 		/*
@@ -280,30 +279,30 @@ void game_display::draw_hex(const map_location& loc)
 
 	if(on_map && loc == mouseoverHex_) {
 		tdrawing_layer hex_top_layer = LAYER_MOUSEOVER_BOTTOM;
-		const unit *u = get_visible_unit(loc, (*teams_)[viewing_team()] );
+		const unit *u = resources::gameboard->get_visible_unit(loc, dc_->teams()[viewing_team()] );
 		if( u != NULL ) {
 			hex_top_layer = LAYER_MOUSEOVER_TOP;
 		}
 		if(u == NULL) {
-			drawing_buffer_add( hex_top_layer,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-top.png~RC(magenta>gold)", image::SCALED_TO_HEX));
-			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-bottom.png~RC(magenta>gold)", image::SCALED_TO_HEX));
-		} else if((*teams_)[currentTeam_].is_enemy(u->side())) {
-			drawing_buffer_add( hex_top_layer,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-enemy-top.png~RC(magenta>red)", image::SCALED_TO_HEX));
-			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-enemy-bottom.png~RC(magenta>red)", image::SCALED_TO_HEX));
-		} else if((*teams_)[currentTeam_].side() == u->side()) {
-			drawing_buffer_add( hex_top_layer,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-top.png~RC(magenta>green)", image::SCALED_TO_HEX));
-			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-bottom.png~RC(magenta>green)", image::SCALED_TO_HEX));
+			drawing_buffer_add( hex_top_layer, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-top.png~RC(magenta>gold)", image::SCALED_TO_HEX));
+			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-bottom.png~RC(magenta>gold)", image::SCALED_TO_HEX));
+		} else if(dc_->teams()[currentTeam_].is_enemy(u->side())) {
+			drawing_buffer_add( hex_top_layer, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-enemy-top.png~RC(magenta>red)", image::SCALED_TO_HEX));
+			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-enemy-bottom.png~RC(magenta>red)", image::SCALED_TO_HEX));
+		} else if(dc_->teams()[currentTeam_].side() == u->side()) {
+			drawing_buffer_add( hex_top_layer, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-top.png~RC(magenta>green)", image::SCALED_TO_HEX));
+			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-bottom.png~RC(magenta>green)", image::SCALED_TO_HEX));
 		} else {
-			drawing_buffer_add( hex_top_layer,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-top.png~RC(magenta>lightblue)", image::SCALED_TO_HEX));
-			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM,
-				loc, xpos, ypos, image::get_image("misc/hover-hex-bottom.png~RC(magenta>lightblue)", image::SCALED_TO_HEX));
+			drawing_buffer_add( hex_top_layer, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-top.png~RC(magenta>lightblue)", image::SCALED_TO_HEX));
+			drawing_buffer_add(LAYER_MOUSEOVER_BOTTOM, loc, xpos, ypos,
+					image::get_image("misc/hover-hex-bottom.png~RC(magenta>lightblue)", image::SCALED_TO_HEX));
 		}
 	}
 
@@ -417,8 +416,8 @@ void game_display::draw_movement_info(const map_location& loc)
 				&& !route_.steps.empty() && route_.steps.front() != loc) {
 		const unit_map::const_iterator un =
 				resources::whiteboard->get_temp_move_unit().valid() ?
-						resources::whiteboard->get_temp_move_unit() : units_->find(route_.steps.front());
-		if(un != units_->end()) {
+						resources::whiteboard->get_temp_move_unit() : dc_->units().find(route_.steps.front());
+		if(un != dc_->units().end()) {
 			// Display the def% of this terrain
 			int def =  100 - un->defense_modifier(get_map().get_terrain(loc));
 			std::stringstream def_text;
@@ -462,9 +461,9 @@ void game_display::draw_movement_info(const map_location& loc)
 	// When out-of-turn, it's still interesting to check out the terrain defs of the selected unit
 	else if (selectedHex_.valid() && loc == mouseoverHex_)
 	{
-		const unit_map::const_iterator selectedUnit = find_visible_unit(selectedHex_,resources::teams->at(currentTeam_));
-		const unit_map::const_iterator mouseoveredUnit = find_visible_unit(mouseoverHex_,resources::teams->at(currentTeam_));
-		if(selectedUnit != units_->end() && mouseoveredUnit == units_->end()) {
+		const unit_map::const_iterator selectedUnit = resources::gameboard->find_visible_unit(selectedHex_,resources::teams->at(currentTeam_));
+		const unit_map::const_iterator mouseoveredUnit = resources::gameboard->find_visible_unit(mouseoverHex_,resources::teams->at(currentTeam_));
+		if(selectedUnit != dc_->units().end() && mouseoveredUnit == dc_->units().end()) {
 			// Display the def% of this terrain
 			int def =  100 - selectedUnit->defense_modifier(get_map().get_terrain(loc));
 			std::stringstream def_text;
@@ -504,8 +503,8 @@ std::vector<surface> game_display::footsteps_images(const map_location& loc)
 
 	// Check which footsteps images of game_config we will use
 	int move_cost = 1;
-	const unit_map::const_iterator u = units_->find(route_.steps.front());
-	if(u != units_->end()) {
+	const unit_map::const_iterator u = dc_->units().find(route_.steps.front());
+	if(u != dc_->units().end()) {
 		move_cost = u->movement_cost(get_map().get_terrain(loc));
 	}
 	int image_number = std::min<int>(move_cost, game_config::foot_speed_prefix.size());
@@ -578,46 +577,7 @@ void game_display::unhighlight_reach()
 	reach_map_changed_ = true;
 }
 
-void game_display::process_reachmap_changes()
-{
-	if (!reach_map_changed_) return;
-	if (reach_map_.empty() != reach_map_old_.empty()) {
-		// Invalidate everything except the non-darkened tiles
-		reach_map &full = reach_map_.empty() ? reach_map_old_ : reach_map_;
 
-		rect_of_hexes hexes = get_visible_hexes();
-		rect_of_hexes::iterator i = hexes.begin(), end = hexes.end();
-		for (;i != end; ++i) {
-			reach_map::iterator reach = full.find(*i);
-			if (reach == full.end()) {
-				// Location needs to be darkened or brightened
-				invalidate(*i);
-			} else if (reach->second != 1) {
-				// Number needs to be displayed or cleared
-				invalidate(*i);
-			}
-		}
-	} else if (!reach_map_.empty()) {
-		// Invalidate only changes
-		reach_map::iterator reach, reach_old;
-		for (reach = reach_map_.begin(); reach != reach_map_.end(); ++reach) {
-			reach_old = reach_map_old_.find(reach->first);
-			if (reach_old == reach_map_old_.end()) {
-				invalidate(reach->first);
-			} else {
-				if (reach_old->second != reach->second) {
-					invalidate(reach->first);
-				}
-				reach_map_old_.erase(reach_old);
-			}
-		}
-		for (reach_old = reach_map_old_.begin(); reach_old != reach_map_old_.end(); ++reach_old) {
-			invalidate(reach_old->first);
-		}
-	}
-	reach_map_old_ = reach_map_;
-	reach_map_changed_ = false;
-}
 
 void game_display::invalidate_route()
 {
@@ -660,9 +620,9 @@ void game_display::float_label(const map_location& loc, const std::string& text,
 	font::add_floating_label(flabel);
 }
 
-std::vector<unit*> game_display::get_unit_list_for_invalidation() {
-	std::vector<unit*> unit_list = display::get_unit_list_for_invalidation();;
-	BOOST_FOREACH(unit *u, fake_units_) {
+std::vector<const unit*> game_display::get_unit_list_for_invalidation() {
+	std::vector<const unit*> unit_list = display::get_unit_list_for_invalidation();;
+	BOOST_FOREACH(const unit *u, fake_units_) {
 		unit_list.push_back(u);
 	}
 	return unit_list;;
@@ -708,10 +668,13 @@ game_display::fake_unit & game_display::fake_unit::operator=(unit const & a)
  */
 game_display::fake_unit::~fake_unit()
 {
+	try {
 	// The fake_unit class exists for this one line, which removes the
 	// fake_unit from the display's fake_units_ dequeue in the event of an
 	// exception.
 	if(my_display_){remove_from_game_display();}
+
+	} catch (...) {}
 }
 
 /**
@@ -784,31 +747,17 @@ void game_display::set_attack_indicator(const map_location& src, const map_locat
 
 void game_display::clear_attack_indicator()
 {
-	set_attack_indicator(map_location::null_location, map_location::null_location);
+	set_attack_indicator(map_location::null_location(), map_location::null_location());
 }
 
 
 
-void game_display::parse_team_overlays()
-{
-//	const team& curr_team = (*teams_)[playing_team()];
-//	const team& prev_team = (*teams_)[playing_team()-1 < teams_->size() ? playing_team()-1 : teams_->size()-1];
-//	BOOST_FOREACH(const game_display::overlay_map::value_type i, overlays_) {
-//		const overlay& ov = i.second;
-//		if (!ov.team_name.empty() &&
-//			((ov.team_name.find(curr_team.team_name()) + 1) != 0) !=
-//			((ov.team_name.find(prev_team.team_name()) + 1) != 0))
-//		{
-//			invalidate(i.first);
-//		}
-//	}
-}
 
 std::string game_display::current_team_name() const
 {
 	if (team_valid())
 	{
-		return (*teams_)[currentTeam_].team_name();
+		return dc_->teams()[currentTeam_].team_name();
 	}
 	return std::string();
 }
@@ -932,7 +881,7 @@ static uint32_t send_dbus_notification(DBusConnection *connection, uint32_t repl
 		ERR_DP << "Failed to send visual notification: " << err.message << '\n';
 		dbus_error_free(&err);
 		if (kde_style) {
-			ERR_DP << " Retrying with the freedesktop protocol.\n";
+			ERR_DP << " Retrying with the freedesktop protocol." << std::endl;
 			kde_style = false;
 			return send_dbus_notification(connection, replaces_id, owner, message);
 		}
@@ -951,10 +900,12 @@ static uint32_t send_dbus_notification(DBusConnection *connection, uint32_t repl
 
 #if defined(HAVE_LIBDBUS) || defined(HAVE_GROWL) || defined(_WIN32)
 void game_display::send_notification(const std::string& owner, const std::string& message)
+{
+	if (preferences::get("disable_notifications", false)) { return; }
 #else
 void game_display::send_notification(const std::string& /*owner*/, const std::string& /*message*/)
-#endif
 {
+#endif
 #if defined(HAVE_LIBDBUS) || defined(HAVE_GROWL) || defined(_WIN32)
 	Uint8 app_state = SDL_GetAppState();
 
@@ -977,19 +928,24 @@ void game_display::send_notification(const std::string& /*owner*/, const std::st
 	while (i != i_end && i->owner != owner) ++i;
 
 	if (i != i_end) {
-		i->message += "\n";
-		i->message += message;
+		i->message = message + "\n" + i->message;
+		int endl_pos = -1;
+		for (int ctr = 0; ctr < 5; ctr++)
+			endl_pos = i->message.find('\n', endl_pos+1);
+
+		i->message = i->message.substr(0,endl_pos);
+
 		send_dbus_notification(connection, i->id, owner, i->message);
 		return;
+	} else {
+		uint32_t id = send_dbus_notification(connection, 0, owner, message);
+		if (!id) return;
+		wnotify visual;
+		visual.id = id;
+		visual.owner = owner;
+		visual.message = message;
+		notifications.push_back(visual);
 	}
-
-	uint32_t id = send_dbus_notification(connection, 0, owner, message);
-	if (!id) return;
-	wnotify visual;
-	visual.id = id;
-	visual.owner = owner;
-	visual.message = message;
-	notifications.push_back(visual);
 #endif
 
 #ifdef HAVE_GROWL
@@ -997,7 +953,7 @@ void game_display::send_notification(const std::string& /*owner*/, const std::st
 	CFStringRef cf_owner = CFStringCreateWithCString(NULL, owner.c_str(), kCFStringEncodingUTF8);
 	CFStringRef cf_message = CFStringCreateWithCString(NULL, message.c_str(), kCFStringEncodingUTF8);
 	//Should be changed as soon as there are more than 2 types of notifications
-	CFStringRef cf_note_name = CFStringCreateWithCString(NULL, owner == "Turn changed" ? "Turn changed" : "Chat message", kCFStringEncodingUTF8);
+	CFStringRef cf_note_name = CFStringCreateWithCString(NULL, owner == _("Turn changed") ? _("Turn changed") : _("Chat message"), kCFStringEncodingUTF8);
 
 	growl_obj.applicationName = app_name;
 	growl_obj.registrationDictionary = NULL;
@@ -1019,11 +975,11 @@ void game_display::send_notification(const std::string& /*owner*/, const std::st
 	std::string notification_title;
 	std::string notification_message;
 
-	if (owner == "Turn changed") {
+	if (owner == _("Turn changed")) {
 		notification_title = owner;
 		notification_message = message;
 	} else {
-		notification_title = "Chat message";
+		notification_title = _("Chat message");
 		notification_message = owner + ": " + message;
 	}
 
@@ -1033,12 +989,12 @@ void game_display::send_notification(const std::string& /*owner*/, const std::st
 
 void game_display::set_team(size_t teamindex, bool show_everything)
 {
-	assert(teamindex < teams_->size());
+	assert(teamindex < dc_->teams().size());
 	currentTeam_ = teamindex;
 	if (!show_everything)
 	{
-		labels().set_team(&(*teams_)[teamindex]);
-		viewpoint_ = &(*teams_)[teamindex];
+		labels().set_team(&dc_->teams()[teamindex]);
+		viewpoint_ = &dc_->teams()[teamindex];
 	}
 	else
 	{
@@ -1052,7 +1008,7 @@ void game_display::set_team(size_t teamindex, bool show_everything)
 
 void game_display::set_playing_team(size_t teamindex)
 {
-	assert(teamindex < teams_->size());
+	assert(teamindex < dc_->teams().size());
 	activeTeam_ = teamindex;
 	invalidate_game_status();
 }
@@ -1067,7 +1023,6 @@ void game_display::begin_game()
 namespace {
 	const int chat_message_border = 5;
 	const int chat_message_x = 10;
-	const int chat_message_y = 10;
 	const SDL_Color chat_message_color = {255,255,255,255};
 	const SDL_Color chat_message_bg     = {0,0,0,140};
 }
@@ -1114,8 +1069,8 @@ void game_display::add_chat_message(const time_t& time, const std::string& speak
 		// We've had a joker who send an invalid utf-8 message to crash clients
 		// so now catch the exception and ignore the message.
 		msg = font::word_wrap_text(msg,font::SIZE_SMALL,map_outside_area().w*3/4);
-	} catch (utils::invalid_utf8_exception&) {
-		ERR_NG << "Invalid utf-8 found, chat message is ignored.\n";
+	} catch (utf8::invalid_utf8_exception&) {
+		ERR_NG << "Invalid utf-8 found, chat message is ignored." << std::endl;
 		return;
 	}
 

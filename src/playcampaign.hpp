@@ -1,6 +1,6 @@
 /*
    Copyright (C) 2003-2005 by David White <dave@whitevine.net>
-   Copyright (C) 2005 - 2013 by Philippe Plantier <ayin@anathas.org>
+   Copyright (C) 2005 - 2014 by Philippe Plantier <ayin@anathas.org>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -21,7 +21,8 @@
 #include "game_end_exceptions.hpp"
 
 class display;
-class game_state;
+class game_display;
+class saved_game;
 class config;
 class CVideo;
 
@@ -31,14 +32,17 @@ enum io_type_t {
 	IO_CLIENT
 };
 
-LEVEL_RESULT play_game(display& disp, game_state& state,
+LEVEL_RESULT play_game(game_display& disp, saved_game& state,
 		const config& game_config,
 		io_type_t io_type=IO_NONE,
-		bool skip_replay = false);
+		bool skip_replay = false,
+		bool network_game = false,
+		bool blindfold_replay = false,
+		bool is_unit_test = false);
 
-
-void play_replay(display& disp, game_state& state,
-		const config& game_config, CVideo& video);
+LEVEL_RESULT play_replay(display& disp, saved_game& state,
+		const config& game_config, CVideo& video,
+		bool is_unit_test = false);
 
 #endif // PLAYCAMPAIGN_H_INCLUDED
 

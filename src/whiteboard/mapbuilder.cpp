@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010 - 2013 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
+ Copyright (C) 2010 - 2014 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
  Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
  This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #include "side_actions.hpp"
 #include "utility.hpp"
 
+#include "game_board.hpp"
 #include "play_controller.hpp"
 #include "resources.hpp"
 #include "unit.hpp"
@@ -47,8 +48,10 @@ mapbuilder::mapbuilder(unit_map& unit_map)
 
 mapbuilder::~mapbuilder()
 {
+	try {
 	restore_normal_map();
 	//Remember that the member variable resetters_ is destructed here
+	} catch (...) {}
 }
 
 void mapbuilder::pre_build()
@@ -65,7 +68,7 @@ void mapbuilder::pre_build()
 		//Remove any unit the current side cannot see to avoid their detection by planning
 		//Units will be restored to the unit map by destruction of removers_
 
-		if(!on_current_side && !u.is_visible_to_team((*resources::teams)[viewer_team()], false)) {
+		if(!on_current_side && !u.is_visible_to_team((*resources::teams)[viewer_team()], resources::gameboard->map(), false)) {
 			removers_.push_back(new temporary_unit_remover(*resources::units, u.get_location()));
 
 			//Don't do anything else to the removed unit!

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2013 by Andrius Silinskas <silinskas.andrius@gmail.com>
+   Copyright (C) 2013 - 2014 by Andrius Silinskas <silinskas.andrius@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -16,16 +16,19 @@
 #include "about.hpp"
 #include "addon/manager.hpp"
 #include "ai/configuration.hpp"
-#include "builder.hpp"
 #include "cursor.hpp"
 #include "game_config.hpp"
 #include "gettext.hpp"
-#include "gui/dialogs/message.hpp"
+#include "gui/dialogs/wml_error.hpp"
+#include "hotkey/hotkey_item.hpp"
+#include "hotkey/hotkey_command.hpp"
 #include "language.hpp"
 #include "loadscreen.hpp"
 #include "log.hpp"
+#include "preferences.hpp"
 #include "resources.hpp"
 #include "scripting/lua.hpp"
+#include "terrain_builder.hpp"
 
 #include <boost/foreach.hpp>
 
@@ -77,7 +80,7 @@ bool game_config_manager::init_game_config(FORCE_RELOAD_CONFIG force_reload)
 
 	hotkey::deactivate_all_scopes();
 	hotkey::set_scope_active(hotkey::SCOPE_GENERAL);
-	hotkey::set_scope_active(hotkey::SCOPE_GAME);
+	hotkey::set_scope_active(hotkey::SCOPE_MAIN_MENU);
 
 	hotkey::load_hotkeys(game_config(), true);
 	::init_textdomains(game_config());
@@ -87,7 +90,8 @@ bool game_config_manager::init_game_config(FORCE_RELOAD_CONFIG force_reload)
 	return true;
 }
 
-void game_config_manager::load_game_config(FORCE_RELOAD_CONFIG force_reload)
+void game_config_manager::load_game_config(FORCE_RELOAD_CONFIG force_reload,
+	game_classification const* classification)
 {
 	// Make sure that 'debug mode' symbol is set
 	// if command line parameter is selected
@@ -119,7 +123,12 @@ void game_config_manager::load_game_config(FORCE_RELOAD_CONFIG force_reload)
 		// Start transaction so macros are shared.
 		game_config::config_cache_transaction main_transaction;
 
-		cache_.get_config(game_config::path +"/data", game_config_);
+		// Load the selected core
+		cache_.get_config(get_wml_location(preferences::wml_tree_root()), game_config_);
+		// Load the mainline core definitions to make sure switching back is always possible.
+		config default_core_cfg;
+		cache_.get_config(game_config::path + "/data/cores.cfg", default_core_cfg);
+		game_config_.append(default_core_cfg);
 
 		main_transaction.lock();
 
@@ -129,6 +138,33 @@ void game_config_manager::load_game_config(FORCE_RELOAD_CONFIG force_reload)
 		core_terrain_rules.splice_children(game_config_, "terrain_graphics");
 
 		load_addons_cfg();
+
+		// If multiplayer campaign is being loaded, [scenario] tags should
+		// become [multiplayer] tags and campaign's id should be added to them
+		// to allow to recognize which scenarios belongs to a loaded campaign.
+		if (classification != NULL) {
+			if (classification->campaign_type == game_classification::MULTIPLAYER &&
+				!classification->campaign_define.empty()) {
+
+				const config& campaign = game_config().find_child("campaign",
+					"define", classification->campaign_define);
+				const std::string& campaign_id = campaign["id"];
+				const bool require_campaign =
+					campaign["require_campaign"].to_bool(true);
+
+				const config::const_child_itors &ci =
+					game_config().child_range("scenario");
+				std::vector<config> scenarios(ci.first, ci.second);
+
+				game_config_.clear_children("scenario");
+
+				BOOST_FOREACH(config& cfg, scenarios) {
+					cfg["campaign_id"] = campaign_id;
+					cfg["require_scenario"] = require_campaign;
+					game_config_.add_child(lexical_cast<std::string>(game_classification::MULTIPLAYER), cfg);
+				}
+			}
+		}
 
 		// Extract the Lua scripts at toplevel.
 		extract_preload_scripts(game_config_);
@@ -145,11 +181,21 @@ void game_config_manager::load_game_config(FORCE_RELOAD_CONFIG force_reload)
 		::init_strings(game_config());
 		theme::set_known_themes(&game_config());
 	} catch(game::error& e) {
-		ERR_CONFIG << "Error loading game configuration files\n";
-		gui2::show_error_message(disp_.video(),
-			_("Error loading game configuration files: '") +
-			e.message + _("' (The game will now exit)"));
-		throw;
+		ERR_CONFIG << "Error loading game configuration files\n" << e.message << '\n';
+
+		if (preferences::wml_tree_root() != "/"){
+			gui2::twml_error::display(
+					_("Error loading custom game configuration files. The game will fallback to the default files."),
+					e.message, disp_.video());
+			preferences::set_wml_tree_root("/");
+			preferences::set_core_id("default");
+			load_game_config(force_reload, classification);
+		} else {
+			gui2::twml_error::display(
+					_("Error loading default game configuration files. The game will now exit."),
+					e.message, disp_.video());
+			throw;
+		}
 	}
 
 	old_defines_map_ = cache_.get_preproc_map();
@@ -169,7 +215,8 @@ void game_config_manager::load_addons_cfg()
 
 	get_files_in_dir(user_campaign_dir, &user_files, &user_dirs,
 		ENTIRE_FILE_PATH);
-	std::stringstream user_error_log;
+
+	std::vector<std::string> error_log;
 
 	// Append the $user_campaign_dir/*.cfg files to addons_to_load.
 	BOOST_FOREACH(const std::string& uc, user_files) {
@@ -200,11 +247,11 @@ void game_config_manager::load_addons_cfg()
 				ERR_CONFIG << "error reading usermade add-on '"
 					<< file << "'\n";
 				error_addons.push_back(file);
-				user_error_log << "The format '~" << file.substr(userdata_loc)
-					<< "' is only for single-file add-ons, use '~"
-					<< file.substr(userdata_loc,
+				error_log.push_back("The format '~" + file.substr(userdata_loc)
+					+ "' is only for single-file add-ons, use '~"
+					+ file.substr(userdata_loc,
 						size_minus_extension - userdata_loc)
-					<< "/_main.cfg' instead.\n";
+					+ "/_main.cfg' instead.");
 			}
 			else {
 				addons_to_load.push_back(file);
@@ -214,6 +261,22 @@ void game_config_manager::load_addons_cfg()
 
 	// Append the $user_campaign_dir/*/_main.cfg files to addons_to_load.
 	BOOST_FOREACH(const std::string& uc, user_dirs) {
+
+		const std::string info_cfg = uc + "/_info.cfg";
+		if (file_exists(info_cfg)) {
+
+			config info;
+			cache_.get_config(info_cfg, info);
+			const config info_tag = info.child_or_empty("info");
+			std::string core = info_tag["core"];
+			if (core.empty()) core = "default";
+			if ( !info_tag.empty() && // Don't skip addons which have no [info], they are most likely manually installed.
+					info_tag["type"] != "core" && // Don't skip cores, we want them selectable at all times.
+					core != preferences::core_id() // Don't skip addons matching our current core.
+			)
+				continue; // Skip add-ons not matching our current core.
+		}
+
 		const std::string main_cfg = uc + "/_main.cfg";
 		if(file_exists(main_cfg)) {
 			addons_to_load.push_back(main_cfg);
@@ -228,30 +291,35 @@ void game_config_manager::load_addons_cfg()
 			cache_.get_config(toplevel, umc_cfg);
 			game_config_.append(umc_cfg);
 		} catch(config::error& err) {
-			ERR_CONFIG << "error reading usermade add-on '" << uc << "'\n";
+			ERR_CONFIG << "error reading usermade add-on '" << uc << "'" << std::endl;
+			ERR_CONFIG << err.message << '\n';
 			error_addons.push_back(uc);
-			user_error_log << err.message << "\n";
+			error_log.push_back(err.message);
 		} catch(preproc_config::error& err) {
-			ERR_CONFIG << "error reading usermade add-on '" << uc << "'\n";
+			ERR_CONFIG << "error reading usermade add-on '" << uc << "'" << std::endl;
+			ERR_CONFIG << err.message << '\n';
 			error_addons.push_back(uc);
-			user_error_log << err.message << "\n";
+			error_log.push_back(err.message);
 		} catch(io_exception&) {
-			ERR_CONFIG << "error reading usermade add-on '" << uc << "'\n";
+			ERR_CONFIG << "error reading usermade add-on '" << uc << "'" << std::endl;
 			error_addons.push_back(uc);
 		}
 	}
 	if(error_addons.empty() == false) {
-		std::stringstream msg;
-		msg << _n("The following add-on had errors and could not be loaded:",
-			"The following add-ons had errors and could not be loaded:",
-				error_addons.size());
-		BOOST_FOREACH(const std::string& error_addon, error_addons) {
-			msg << "\n" << error_addon;
-		}
+		const size_t n = error_addons.size();
+		const std::string& msg1 =
+			_n("The following add-on had errors and could not be loaded:",
+			   "The following add-ons had errors and could not be loaded:",
+			   n);
+		const std::string& msg2 =
+			_n("Please report this to the author or maintainer of this add-on.",
+			   "Please report this to the respective authors or maintainers of these add-ons.",
+			   n);
 
-		msg << '\n' << _("ERROR DETAILS:") << '\n' << user_error_log.str();
+		const std::string& report = utils::join(error_log, "\n\n");
 
-		gui2::show_error_message(disp_.video(),msg.str());
+		gui2::twml_error::display(msg1, msg2, error_addons, report,
+								  disp_.video());
 	}
 }
 
@@ -306,8 +374,7 @@ void game_config_manager::load_game_config_for_game(
 	game_config::scoped_preproc_define campaign(classification.campaign_define,
 		!classification.campaign_define.empty());
 	game_config::scoped_preproc_define multiplayer("MULTIPLAYER",
-		classification.campaign_define.empty() &&
-		classification.campaign_type == "multiplayer");
+		classification.campaign_type == game_classification::MULTIPLAYER);
 
 	typedef boost::shared_ptr<game_config::scoped_preproc_define> define;
 	std::deque<define> extra_defines;
@@ -319,7 +386,7 @@ void game_config_manager::load_game_config_for_game(
 	}
 
 	try{
-		load_game_config(NO_FORCE_RELOAD);
+		load_game_config(NO_FORCE_RELOAD, &classification);
 	}
 	catch(game::error&) {
 		cache_.clear_defines();

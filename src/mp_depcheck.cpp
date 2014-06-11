@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2012 - 2013 by Boldizsár Lipka <lipkab@zoho.com>
+   Copyright (C) 2012 - 2014 by Boldizsár Lipka <lipkab@zoho.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -355,6 +355,24 @@ void manager::try_modifications(const std::vector<std::string>& ids, bool force)
 	}
 }
 
+void manager::try_modification_by_index(int index, bool activate, bool force)
+{
+	std::string id = depinfo_.child("modification", index)["id"];
+	std::vector<std::string> mods_copy = mods_;
+	if (activate) {
+		if (std::find(mods_copy.begin(), mods_copy.end(), id) == mods_copy.end()) {
+			mods_copy.push_back(id);
+		}
+	} else {
+		std::vector<std::string>::iterator pos = std::find(mods_copy.begin(), mods_copy.end(), id);
+		if (pos != mods_copy.end()) {
+			mods_copy.erase(pos);
+		}
+	}
+
+	try_modifications(mods_copy, force);
+}
+
 void manager::try_era_by_index(int index, bool force)
 {
 	try_era(depinfo_.child("era", index)["id"], force);
@@ -394,6 +412,13 @@ int manager::get_scenario_index() const
 
 	return -1;
 }
+
+bool manager::is_modification_active(int index) const
+{
+	std::string id = depinfo_.child("modification", index)["id"];
+	return std::find(mods_.begin(), mods_.end(), id) != mods_.end();
+}
+
 
 
 bool manager::enable_mods_dialog(const std::vector<std::string>& mods,
@@ -590,7 +615,7 @@ bool manager::change_era(const std::string& id)
 
 	mods_ = newmods;
 
-	// Now checking if the currently selected scenarop conflicts the era
+	// Now checking if the currently selected scenario conflicts the era
 	// and changing scenario if necessary
 	if (!conflicts(era, elem(scenario_, "scenario"))) {
 		return true;

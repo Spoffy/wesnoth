@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -26,6 +26,7 @@
 #include "about.hpp"
 #include "display.hpp"
 #include "exceptions.hpp"
+#include "game_board.hpp"
 #include "game_preferences.hpp"
 #include "gettext.hpp"
 #include "gui/dialogs/transient_message.hpp"
@@ -69,9 +70,10 @@ void help_button::show_help()
 	help::show_help(disp_, topic_);
 }
 
-bool help_button::can_execute_command(hotkey::HOTKEY_COMMAND cmd, int/*index*/) const
+bool help_button::can_execute_command(const hotkey::hotkey_command& cmd, int/*index*/) const
 {
-	return (topic_.empty() == false && cmd == hotkey::HOTKEY_HELP) || cmd == hotkey::HOTKEY_SCREENSHOT;
+	hotkey::HOTKEY_COMMAND command = cmd.id;
+	return (topic_.empty() == false && command == hotkey::HOTKEY_HELP) || command == hotkey::HOTKEY_SCREENSHOT;
 }
 
 void help_button::join() {
@@ -528,7 +530,9 @@ static std::vector<std::string> make_unit_links_list(
 		const std::vector<std::string>& type_id_list, bool ordered = false);
 
 static void generate_races_sections(const config *help_cfg, section &sec, int level);
+static void generate_terrain_sections(const config* help_cfg, section &sec, int level);
 static std::vector<topic> generate_unit_topics(const bool, const std::string& race);
+static void generate_unit_sections(const config *help_cfg, section &sec, int level, const bool, const std::string& race);
 enum UNIT_DESCRIPTION_TYPE {FULL_DESCRIPTION, NO_DESCRIPTION, NON_REVEALING_DESCRIPTION};
 /// Return the type of description that should be shown for a unit of
 /// the given kind. This method is intended to filter out information
@@ -607,7 +611,6 @@ namespace {
 	config dummy_cfg;
 	std::vector<std::string> empty_string_vector;
 	const int max_section_level = 15;
-	const int menu_font_size = font::SIZE_NORMAL;
 	const int title_size = font::SIZE_LARGE;
 	const int title2_size = font::SIZE_15;
 	const int box_width = 2;
@@ -621,6 +624,7 @@ namespace {
 	const std::string default_show_topic = "introduction_topic";
 	const std::string unknown_unit_topic = ".unknown_unit";
 	const std::string unit_prefix = "unit_";
+	const std::string terrain_prefix = "terrain_";
 	const std::string race_prefix = "race_";
 	const std::string faction_prefix = "faction_";
 	const std::string variation_prefix = "variation_";
@@ -996,11 +1000,10 @@ void parse_config_internal(const config *help_cfg, const config *section_cfg,
 			  ,std::back_inserter(sec.topics),title_less());
 		}
 		else {
-			std::copy(topics.begin(), topics.end(),
-			  std::back_inserter(sec.topics));
-			std::copy(generated_topics.begin(),
-			  generated_topics.end(),
-			  std::back_inserter(sec.topics));
+			sec.topics.insert(sec.topics.end(),
+				topics.begin(), topics.end());
+			sec.topics.insert(sec.topics.end(),
+				generated_topics.begin(), generated_topics.end());
 		}
 	}
 }
@@ -1042,6 +1045,13 @@ void generate_sections(const config *help_cfg, const std::string &generator, sec
 {
 	if (generator == "races") {
 		generate_races_sections(help_cfg, sec, level);
+	} else if (generator == "terrains") {
+		generate_terrain_sections(help_cfg, sec, level);
+	} else 	{
+		std::vector<std::string> parts = utils::split(generator, ':', utils::STRIP_SPACES);
+		if (parts[0] == "units" && parts.size()>1) {
+			generate_unit_sections(help_cfg, sec, level, true, parts[1]);
+		}
 	}
 }
 
@@ -1123,10 +1133,12 @@ std::vector<topic> generate_weapon_special_topics(const bool sort_generated)
 				if (!type.hide_help()) {
 					//add a link in the list of units having this special
 					std::string type_name = type.type_name();
-					std::string ref_id = unit_prefix + type.id();
+					//check for variations (walking corpse/soulless etc)
+					const std::string section_prefix = type.variations().empty() ? "" : "..";
+					std::string ref_id = section_prefix + unit_prefix + type.id();
 					//we put the translated name at the beginning of the hyperlink,
 					//so the automatic alphabetic sorting of std::set can use it
-					std::string link =  "<ref>text='" + escape(type_name) + "' dst='" + escape(ref_id) + "'</ref>";
+					std::string link = make_link(type_name, ref_id);
 					special_units[specials[i].first].insert(link);
 				}
 			}
@@ -1192,7 +1204,7 @@ std::vector<topic> generate_ability_topics(const bool sort_generated)
 						std::string ref_id = unit_prefix +  type.id();
 						//we put the translated name at the beginning of the hyperlink,
 						//so the automatic alphabetic sorting of std::set can use it
-						std::string link =  "<ref>text='" + escape(type_name) + "' dst='" + escape(ref_id) + "'</ref>";
+						std::string link = make_link(type_name, ref_id);
 						ability_units[abil_name].insert(link);
 					}
 				}
@@ -1287,7 +1299,74 @@ std::vector<topic> generate_faction_topics(const bool sort_generated)
 	return topics;
 }
 
+class terrain_topic_generator: public topic_generator
+{
+	const terrain_type& type_;
 
+
+public:
+	terrain_topic_generator(const terrain_type& type) : type_(type) {}
+
+	virtual std::string operator()() const {
+
+		std::stringstream ss;
+
+		if (!type_.icon_image().empty())
+		ss << "<img>src='images/buttons/icon-base-32.png~RC(magenta>" << type_.id()
+				<< ")~BLIT("<< "terrain/" << type_.icon_image() << "_30.png)" << "'</img> ";
+
+		if (!type_.editor_image().empty())
+			ss << "<img>src='" << type_.editor_image() << "'</img> ";
+
+		ss << type_.help_topic_text().str() << "\n";
+
+		if (!(type_.union_type().size() == 1 && type_.union_type()[0] == type_.number() && type_.is_nonnull())) {
+
+			const t_translation::t_list& underlying_terrains = resources::gameboard->map().underlying_mvt_terrain(type_.number());
+
+			ss << "\n" << N_("Base Terrain: ");
+
+			bool first = true;
+			BOOST_FOREACH(const t_translation::t_terrain& underlying_terrain, underlying_terrains) {
+				const terrain_type& mvt_base = resources::gameboard->map().get_terrain_info(underlying_terrain);
+
+				if (mvt_base.editor_name().empty()) continue;
+				if (!first) ss << ",";
+				else first = false;
+				ss << make_link(mvt_base.editor_name(), ".." + terrain_prefix + mvt_base.id());
+			}
+		}
+
+		if (game_config::debug) {
+
+			ss << "\n";
+			ss << "ID: "          << type_.id() << "\n";
+
+			ss << "Village: "     << (type_.is_village()   ? "Yes" : "No") << "\n";
+			ss << "Gives Healing: " << type_.gives_healing() << "\n";
+
+			ss << "Keep: "        << (type_.is_keep()      ? "Yes" : "No") << "\n";
+			ss << "Castle: "      << (type_.is_castle()    ? "Yes" : "No") << "\n";
+
+			ss << "Overlay: "     << (type_.is_overlay()   ? "Yes" : "No") << "\n";
+			ss << "Combined: "    << (type_.is_combined()  ? "Yes" : "No") << "\n";
+			ss << "Nonnull: "     << (type_.is_nonnull()   ? "Yes" : "No") << "\n";
+
+			ss << "Terrain string:"  << type_.number() << "\n";
+
+			ss << "Hide in Editor: " << (type_.hide_in_editor() ? "Yes" : "No") << "\n";
+			ss << "Hide Help: "      << (type_.hide_help() ? "Yes" : "No") << "\n";
+			ss << "Editor Group: "   << type_.editor_group() << "\n";
+
+			ss << "Light Bonus: "   << type_.light_bonus(0) << "\n";
+
+			ss << type_.income_description();
+		}
+
+		return ss.str();
+	}
+
+};
 class unit_topic_generator: public topic_generator
 {
 	const unit_type& type_;
@@ -1351,7 +1430,7 @@ public:
 
 				BOOST_FOREACH(const std::string &adv, adv_units)
 				{
-					const unit_type *type = unit_types.find(adv, unit_type::HELP_INDEX);
+					const unit_type *type = unit_types.find(adv, unit_type::HELP_INDEXED);
 					if (!type || type->hide_help()) continue;
 
 					if (first) {
@@ -1366,49 +1445,64 @@ public:
 					std::string lang_unit = type->type_name();
 					std::string ref_id;
 					if (description_type(*type) == FULL_DESCRIPTION) {
-						ref_id = unit_prefix + type->id();
+						const std::string section_prefix = type->variations().empty() ? "" : "..";
+						ref_id = section_prefix + unit_prefix + type->id();
 					} else {
 						ref_id = unknown_unit_topic;
 						lang_unit += " (?)";
 					}
-					ss << "<ref>dst='" << escape(ref_id) << "' text='" << escape(lang_unit) << "'</ref>";
+					ss << make_link(lang_unit, ref_id);
 				}
-				ss << "\n"; //added even if empty, to avoid shifting
+				if (!first) ss << "\n";
 
 				reverse = !reverse; //switch direction
 			} while(reverse != first_reverse_value); // don't restart
 		}
 
+		const unit_type* parent = variation_.empty() ? &type_ :
+				unit_types.find(type_.id(), unit_type::HELP_INDEXED);
 		if (!variation_.empty()) {
-			const unit_type *parent = unit_types.find(type_.id(), unit_type::HELP_INDEX);
-			ss << _("Base unit: ") << "<ref>dst='" << unit_prefix + type_.id() << "' text='" << escape(parent->type_name()) << "'</ref>\n";
-		}
-
-		if (variation_.empty()) {
+			ss << _("Base unit: ") << make_link(parent->type_name(), ".." + unit_prefix + type_.id()) << "\n";
+		} else {
 			bool first = true;
-			BOOST_FOREACH(const std::string &var, type_.variations()) {
-				const unit_type &type = type_.get_variation(var);
-				if (type.hide_help()) continue;
-
+			BOOST_FOREACH(const std::string& base_id, utils::split(type_.get_cfg()["base_ids"])) {
 				if (first) {
-					ss << _("Variations: ");
+					ss << _("Base units: ");
 					first = false;
-				} else
-					ss << ", ";
-
-				std::string ref_id;
-				std::string var_name = var;
-				if (description_type(type) == FULL_DESCRIPTION) {
-					ref_id = variation_prefix + type.id() + "_" + var;
-				} else {
-					ref_id = unknown_unit_topic;
-					var_name += " (?)";
 				}
-
-				ss << "<ref>dst='" << escape(ref_id) << "' text='" << escape(var_name) << "'</ref>";
+				const unit_type* base_type = unit_types.find(base_id, unit_type::HELP_INDEXED);
+				const std::string section_prefix = base_type->variations().empty() ? "" : "..";
+				ss << make_link(base_type->type_name(), section_prefix + unit_prefix + base_id) << "\n";
 			}
-			ss << "\n"; //added even if empty, to avoid shifting
 		}
+
+		bool first = true;
+		BOOST_FOREACH(const std::string &var_id, parent->variations()) {
+			const unit_type &type = parent->get_variation(var_id);
+
+			if(type.hide_help()) {
+				continue;
+			}
+
+			if (first) {
+				ss << _("Variations: ");
+				first = false;
+			} else
+				ss << ", ";
+
+			std::string ref_id;
+
+			std::string var_name = type.variation_name();
+			if (description_type(type) == FULL_DESCRIPTION) {
+				ref_id = variation_prefix + type.id() + "_" + var_id;
+			} else {
+				ref_id = unknown_unit_topic;
+				var_name += " (?)";
+			}
+
+			ss << make_link(var_name, ref_id);
+		}
+		ss << "\n"; //added even if empty, to avoid shifting
 
 		// Print the race of the unit, cross-reference it to the
 		// respective topic.
@@ -1418,7 +1512,7 @@ public:
 			race_name = _ ("race^Miscellaneous");
 		}
 		ss << _("Race: ");
-		ss << "<ref>dst='" << escape("..race_"+race_id) << "' text='" << escape(race_name) << "'</ref>";
+		ss << make_link(race_name, "..race_" + race_id);
 		ss << "\n";
 
 		// Print the abilities the units has, cross-reference them
@@ -1430,8 +1524,7 @@ public:
 				 ability_it != ability_end; ++ability_it) {
 				const std::string ref_id = "ability_" + ability_it->base_str();
 				std::string lang_ability = gettext(ability_it->c_str());
-				ss << "<ref>dst='" << escape(ref_id) << "' text='" << escape(lang_ability)
-				   << "'</ref>";
+				ss << make_link(lang_ability, ref_id);
 				if (ability_it + 1 != ability_end)
 					ss << ", ";
 			}
@@ -1447,8 +1540,7 @@ public:
 				 ability_it != ability_end; ++ability_it) {
 				const std::string ref_id = "ability_" + ability_it->base_str();
 				std::string lang_ability = gettext(ability_it->c_str());
-				ss << "<ref>dst='" << escape(ref_id) << "' text='" << escape(lang_ability)
-				   << "'</ref>";
+				ss << make_link(lang_ability, ref_id);
 				if (ability_it + 1 != ability_end)
 					ss << ", ";
 			}
@@ -1465,9 +1557,7 @@ public:
 			ss << _("Jamming: ") << type_.jamming() << jump(30);
 		ss << _("Cost: ") << type_.cost() << jump(30)
 		   << _("Alignment: ")
-		   << "<ref>dst='time_of_day' text='"
-		   << type_.alignment_description(type_.alignment(), type_.genders().front())
-		   << "'</ref>"
+		   << make_link(type_.alignment_description(type_.alignment(), type_.genders().front()), "time_of_day")
 		   << jump(30);
 		if (type_.can_advance())
 			ss << _("Required XP: ") << type_.experience_needed();
@@ -1509,7 +1599,11 @@ public:
 				attack_ss << attack_it->damage() << utils::unicode_en_dash << attack_it->num_attacks() << " " << attack_it->accuracy_parry_description();
 				push_tab_pair(row, attack_ss.str());
 				attack_ss.str(clear_stringstream);
-				push_tab_pair(row, string_table["range_" + (*attack_it).range()]);
+				if ((*attack_it).min_range() > 1 || (*attack_it).max_range() > 1)
+					attack_ss << (*attack_it).min_range() << "-" << (*attack_it).max_range() << ' ';
+				attack_ss << string_table["range_" + (*attack_it).range()];
+				push_tab_pair(row, attack_ss.str());
+				attack_ss.str(clear_stringstream);
 				// Show this attack's special, if it has any. Cross
 				// reference it to the section describing the
 				// special.
@@ -1522,8 +1616,7 @@ public:
 						const std::string ref_id = std::string("weaponspecial_")
 							+ specials[i].first.base_str();
 						lang_special = (specials[i].first);
-						attack_ss << "<ref>dst='" << escape(ref_id)
-								  << "' text='" << escape(lang_special) << "'</ref>";
+						attack_ss << make_link(lang_special, ref_id);
 						if ( i+1 != specials_size )
 							attack_ss << ", "; //comma placed before next special
 					}
@@ -1569,7 +1662,7 @@ public:
 		}
 		ss << generate_table(resistance_table);
 
-		if (resources::game_map != NULL) {
+		if (resources::gameboard != NULL) {
 			// Print the terrain modifier table of the unit.
 			ss << "\n\n<header>text='" << escape(_("Terrain Modifiers"))
 			   << "'</header>\n\n";
@@ -1596,23 +1689,27 @@ public:
 				const t_translation::t_terrain terrain = *terrain_it;
 				if (terrain == t_translation::FOGGED || terrain == t_translation::VOID_TERRAIN || terrain == t_translation::OFF_MAP_USER)
 					continue;
-				const terrain_type& info = resources::game_map->get_terrain_info(terrain);
+				const terrain_type& info = resources::gameboard->map().get_terrain_info(terrain);
 
 				if (info.union_type().size() == 1 && info.union_type()[0] == info.number() && info.is_nonnull()) {
 					std::vector<item> row;
 					const std::string& name = info.name();
-					const std::string id = info.id();
+					const std::string& id = info.id();
 					const int moves = movement_type.movement_cost(terrain);
 					const int views = movement_type.vision_cost(terrain);
 					const int jams  = movement_type.jamming_cost(terrain);
-					std::stringstream str;
-					str << "<ref>text='" << escape(name) << "' dst='"
-							<< escape(std::string("terrain_") + id) << "'</ref>";
-					row.push_back(std::make_pair(str.str(),
-							font::line_width(name, normal_font_size)));
+
+					bool high_res = false;
+					const std::string tc_base = high_res ? "images/buttons/icon-base-32.png" : "images/buttons/icon-base-16.png";
+					const std::string terrain_image = "icons/terrain/terrain_type_" + id + (high_res ? "_30.png" : ".png");
+
+					const std::string final_image = tc_base + "~RC(magenta>" + id + ")~BLIT(" + terrain_image + ")";
+
+					row.push_back(std::make_pair( "<img>src='" + final_image + "'</img> " +
+							make_link(name, "..terrain_" + id),
+							font::line_width(name, normal_font_size) + (high_res ? 32 : 16) ));
 
 					//defense  -  range: +10 % .. +70 %
-					str.str(clear_stringstream);
 					const int defense =
 							100 - movement_type.defense_modifier(terrain);
 					std::string color;
@@ -1625,6 +1722,7 @@ public:
 					else
 						color = "green";
 
+					std::stringstream str;
 					str << "<format>color=" << color << " text='"<< defense << "%'</format>";
 					std::string markup = str.str();
 					str.str(clear_stringstream);
@@ -1723,7 +1821,7 @@ std::string make_unit_link(const std::string& type_id)
 {
 	std::string link;
 
-	const unit_type *type = unit_types.find(type_id, unit_type::HELP_INDEX);
+	const unit_type *type = unit_types.find(type_id, unit_type::HELP_INDEXED);
 	if (!type) {
 		std::cerr << "Unknown unit type : " << type_id << "\n";
 		// don't return an hyperlink (no page)
@@ -1733,7 +1831,8 @@ std::string make_unit_link(const std::string& type_id)
 		std::string name = type->type_name();
 		std::string ref_id;
 		if (description_type(*type) == FULL_DESCRIPTION) {
-			ref_id = unit_prefix + type->id();
+			const std::string section_prefix = type->variations().empty() ? "" : "..";
+			ref_id = section_prefix + unit_prefix + type->id();
 		} else {
 			ref_id = unknown_unit_topic;
 			name += " (?)";
@@ -1791,6 +1890,7 @@ void generate_races_sections(const config *help_cfg, section &sec, int level)
 		}
 		section_cfg["title"] = title;
 
+		section_cfg["sections_generator"] = "units:" + *it;
 		section_cfg["generator"] = "units:" + *it;
 
 		parse_config_internal(help_cfg, &section_cfg, race_section, level+1);
@@ -1798,6 +1898,86 @@ void generate_races_sections(const config *help_cfg, section &sec, int level)
 	}
 }
 
+void generate_terrain_sections(const config* /*help_cfg*/, section& sec, int /*level*/)
+{
+	if (resources::gameboard == NULL) return;
+
+	std::map<std::string, section> base_map;
+
+	const t_translation::t_list& t_listi = resources::gameboard->map().get_terrain_list();
+
+	BOOST_FOREACH(const t_translation::t_terrain& t, t_listi) {
+
+		const terrain_type& info = resources::gameboard->map().get_terrain_info(t);
+
+		bool hidden = info.is_combined() || info.hide_help();
+
+		if (preferences::encountered_terrains().find(t)
+				== preferences::encountered_terrains().end() && !info.is_overlay())
+			hidden = true;
+
+		topic terrain_topic;
+		terrain_topic.title = info.editor_name();
+		terrain_topic.id    = hidden_symbol(hidden) + terrain_prefix + info.id();
+		terrain_topic.text  = new terrain_topic_generator(info);
+
+		t_translation::t_list base_terrains = resources::gameboard->map().underlying_union_terrain(t);
+		BOOST_FOREACH(const t_translation::t_terrain& base, base_terrains) {
+
+			const terrain_type& base_info = resources::gameboard->map().get_terrain_info(base);
+
+			if (!base_info.is_nonnull() || base_info.hide_help())
+				continue;
+
+			section& base_section = base_map[base_info.id()];
+
+			base_section.id = terrain_prefix + base_info.id();
+			base_section.title = base_info.editor_name();
+
+			if (base_info.id() == info.id())
+				terrain_topic.id = ".." + terrain_prefix + info.id();
+			base_section.topics.push_back(terrain_topic);
+		}
+	}
+
+	for (std::map<std::string, section>::const_iterator it = base_map.begin(); it != base_map.end(); ++it) {
+		sec.add_section(it->second);
+	}
+}
+
+void generate_unit_sections(const config* /*help_cfg*/, section& sec, int level, const bool /*sort_generated*/, const std::string& race)
+{
+	BOOST_FOREACH(const unit_type_data::unit_type_map::value_type &i, unit_types.types()) {
+		const unit_type &type = i.second;
+
+		if (type.race_id() != race)
+			continue;
+
+		if (type.variations().empty())
+			continue;
+
+		section base_unit;
+		BOOST_FOREACH(const std::string &variation_id, type.variations()) {
+			// TODO: Do we apply encountered stuff to variations?
+			const unit_type &var_type = type.get_variation(variation_id);
+			const std::string topic_name = var_type.type_name() + "\n" + var_type.variation_name();
+			const std::string var_ref = hidden_symbol(var_type.hide_help()) + variation_prefix + var_type.id() + "_" + variation_id;
+
+			topic var_topic(topic_name, var_ref, "");
+			var_topic.text = new unit_topic_generator(var_type, variation_id);
+			base_unit.topics.push_back(var_topic);
+		}
+
+		const std::string type_name = type.type_name();
+		const std::string ref_id = hidden_symbol(type.hide_help()) + unit_prefix +  type.id();
+
+		base_unit.id = ref_id;
+		base_unit.title = type_name;
+		base_unit.level = level +1;
+
+		sec.add_section(base_unit);
+	}
+}
 
 std::vector<topic> generate_unit_topics(const bool sort_generated, const std::string& race)
 {
@@ -1812,23 +1992,13 @@ std::vector<topic> generate_unit_topics(const bool sort_generated, const std::st
 		if (type.race_id() != race)
 			continue;
 
-		BOOST_FOREACH(const std::string &variation_name, type.variations()) {
-			// TODO: Do we apply encountered stuff to variations?
-			const unit_type &var_type = type.get_variation(variation_name);
-			const std::string topic_name = var_type.type_name() + "\n" + variation_name;
-			const std::string var_ref = hidden_symbol(var_type.hide_help()) + variation_prefix + var_type.id() + "_" + variation_name;
-
-			topic var_topic(topic_name, var_ref, "");
-			var_topic.text = new unit_topic_generator(var_type, variation_name);
-			topics.push_back(var_topic);
-		}
-
 		UNIT_DESCRIPTION_TYPE desc_type = description_type(type);
 		if (desc_type != FULL_DESCRIPTION)
 			continue;
 
 		const std::string type_name = type.type_name();
-		const std::string ref_id = hidden_symbol(type.hide_help()) + unit_prefix +  type.id();
+		const std::string real_prefix = type.variations().empty() ? "" : "..";
+		const std::string ref_id = hidden_symbol(type.hide_help()) + real_prefix + unit_prefix +  type.id();
 		topic unit_topic(type_name, ref_id, "");
 		unit_topic.text = new unit_topic_generator(type);
 		topics.push_back(unit_topic);
@@ -1836,7 +2006,7 @@ std::vector<topic> generate_unit_topics(const bool sort_generated, const std::st
 		if (!type.hide_help()) {
 			// we also record an hyperlink of this unit
 			// in the list used for the race topic
-			std::string link =  "<ref>text='" + escape(type_name) + "' dst='" + escape(ref_id) + "'</ref>";
+			std::string link = make_link(type_name, ref_id);
 			race_units.insert(link);
 		}
 	}
@@ -1856,7 +2026,7 @@ std::vector<topic> generate_unit_topics(const bool sort_generated, const std::st
 		    std::string text = additional_topic["text"];
 		    //topic additional_topic(title, id, text);
 		    topics.push_back(topic(title,id,text));
-		    std::string link =  "<ref>text='" + escape(title) + "' dst='" + escape(id) + "'</ref>";
+			std::string link = make_link(title, id);
 			race_topics.insert(link);
 		  }
 	} else {
@@ -1881,7 +2051,8 @@ std::vector<topic> generate_unit_topics(const bool sort_generated, const std::st
 
 UNIT_DESCRIPTION_TYPE description_type(const unit_type &type)
 {
-	if (game_config::debug || preferences::show_all_units_in_help()) {
+	if (game_config::debug || preferences::show_all_units_in_help()	||
+			hotkey::is_scope_active(hotkey::SCOPE_EDITOR) ) {
 		return FULL_DESCRIPTION;
 	}
 
@@ -1934,8 +2105,8 @@ std::string generate_contents_links(const std::string& section_name, config cons
 
 		std::vector<link>::iterator l;
 		for (l = topics_links.begin(); l != topics_links.end(); ++l) {
-			std::string link =  "<ref>text='" + escape(l->first) + "' dst='" + escape(l->second) + "'</ref>";
-			res << link <<"\n";
+			std::string link = make_link(l->first, l->second);
+			res << link << "\n";
 		}
 
 		return res.str();
@@ -1948,19 +2119,18 @@ std::string generate_contents_links(const section &sec, const std::vector<topic>
 		section_list::const_iterator s;
 		for (s = sec.sections.begin(); s != sec.sections.end(); ++s) {
 			if (is_visible_id((*s)->id)) {
-				std::string link =  "<ref>text='" + escape((*s)->title) + "' dst='.." + escape((*s)->id) + "'</ref>";
-				res << link <<"\n";
+				std::string link = make_link((*s)->title, ".."+(*s)->id);
+				res << link << "\n";
 			}
 		}
 
 		std::vector<topic>::const_iterator t;
 		for (t = topics.begin(); t != topics.end(); ++t) {
 			if (is_visible_id(t->id)) {
-				std::string link =  "<ref>text='" + escape(t->title) + "' dst='" + escape(t->id) + "'</ref>";
-				res << link <<"\n";
+				std::string link = make_link(t->title, t->id);
+				res << link << "\n";
 			}
 		}
-
 		return res.str();
 }
 
@@ -1995,7 +2165,7 @@ section& section::operator=(const section &sec)
 	title = sec.title;
 	id = sec.id;
 	level = sec.level;
-	std::copy(sec.topics.begin(), sec.topics.end(), std::back_inserter(topics));
+	topics.insert(topics.end(), sec.topics.begin(), sec.topics.end());
 	std::transform(sec.sections.begin(), sec.sections.end(),
 				   std::back_inserter(sections), create_section());
 	return *this;
@@ -2567,7 +2737,7 @@ void help_text_area::add_img_item(const std::string& path, const std::string& al
 		return;
 	ALIGNMENT align = str_to_align(alignment);
 	if (align == HERE && floating) {
-		WRN_DP << "Floating image with align HERE, aligning left.\n";
+		WRN_DP << "Floating image with align HERE, aligning left." << std::endl;
 		align = LEFT;
 	}
 	const int width = surf->w + (box ? box_width * 2 : 0);
@@ -2726,7 +2896,7 @@ void help_text_area::draw_contents()
 			dst.y += loc.y;
 			if (it->box) {
 				for (int i = 0; i < box_width; ++i) {
-					draw_rectangle(dst.x, dst.y, it->rect.w - i * 2, it->rect.h - i * 2,
+					sdl::draw_rectangle(dst.x, dst.y, it->rect.w - i * 2, it->rect.h - i * 2,
 					                    0, screen);
 					++dst.x;
 					++dst.y;
@@ -2747,7 +2917,7 @@ void help_text_area::scroll(unsigned int)
 }
 
 bool help_text_area::item_at::operator()(const item& item) const {
-	return point_in_rect(x_, y_, item.rect);
+	return sdl::point_in_rect(x_, y_, item.rect);
 }
 
 std::string help_text_area::ref_at(const int x, const int y)
@@ -2839,7 +3009,7 @@ void help_browser::process_event()
 	SDL_GetMouseState(&mousex,&mousey);
 
 	/// Fake focus functionality for the menu, only process it if it has focus.
-	if (point_in_rect(mousex, mousey, menu_.location())) {
+	if (sdl::point_in_rect(mousex, mousey, menu_.location())) {
 		menu_.process();
 		const topic *chosen_topic = menu_.chosen_topic();
 		if (chosen_topic != NULL && chosen_topic != shown_topic_) {
@@ -3141,7 +3311,7 @@ std::vector<std::string> split_in_width(const std::string &s, const int font_siz
 		res.push_back(s.substr(first_line.size()));
 	}
 	}
-	catch (utils::invalid_utf8_exception&)
+	catch (utf8::invalid_utf8_exception&)
 	{
 		throw parse_error (_("corrupted original file"));
 	}
@@ -3172,13 +3342,13 @@ std::string get_first_word(const std::string &s)
 	//if no gap(' ' or '\n') found, test if it is CJK character
 	std::string re = s.substr(0, first_word_end);
 
-	utils::utf8_iterator ch(re);
-	if (ch == utils::utf8_iterator::end(re))
+	utf8::iterator ch(re);
+	if (ch == utf8::iterator::end(re))
 		return re;
 
-	wchar_t firstchar = *ch;
+	ucs4::char_t firstchar = *ch;
 	if (font::is_cjk_char(firstchar)) {
-		re = utils::wchar_to_string(firstchar);
+		re = unicode_cast<utf8::string>(firstchar);
 	}
 	return re;
 }
@@ -3198,10 +3368,23 @@ void show_help(display &disp, const std::string& show_topic, int xloc, int yloc)
  *
  * If show_topic is the empty string, the default topic will be shown.
  */
-void show_unit_help(display &disp, const std::string& show_topic, bool hidden, int xloc, int yloc)
+void show_unit_help(display &disp, const std::string& show_topic, bool has_variations, bool hidden, int xloc, int yloc)
 {
-	show_help(disp, toplevel, hidden_symbol(hidden) + unit_prefix + show_topic, xloc, yloc);
+	show_help(disp, toplevel,
+			  hidden_symbol(hidden) + (has_variations ? ".." : "") + unit_prefix + show_topic, xloc, yloc);
 }
+
+/**
+ * Open the help browser, show terrain with id terrain_id.
+ *
+ * If show_topic is the empty string, the default topic will be shown.
+ */
+void show_terrain_help(display &disp, const std::string& show_topic, bool hidden, int xloc, int yloc)
+{
+	show_help(disp, toplevel, hidden_symbol(hidden) + terrain_prefix + show_topic, xloc, yloc);
+}
+
+
 
 /**
  * Open the help browser, show the variation of the unit matching.
@@ -3226,7 +3409,7 @@ void show_help(display &disp, const section &toplevel_sec,
 	const resize_lock prevent_resizing;
 
 	CVideo& screen = disp.video();
-	surface const scr = screen.getSurface();
+	const surface& scr = screen.getSurface();
 
 	const int width  = std::min<int>(font::relative_size(900), scr->w - font::relative_size(20));
 	const int height = std::min<int>(font::relative_size(800), scr->h - font::relative_size(150));
@@ -3252,7 +3435,7 @@ void show_help(display &disp, const section &toplevel_sec,
 
     // Find all unit_types that have not been constructed yet and fill in the information
     // needed to create the help topics
-	unit_types.build_all(unit_type::HELP_INDEX);
+	unit_types.build_all(unit_type::HELP_INDEXED);
 
 	if (preferences::encountered_units().size() != size_t(last_num_encountered_units) ||
 	    preferences::encountered_terrains().size() != size_t(last_num_encountered_terrains) ||

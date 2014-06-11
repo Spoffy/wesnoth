@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2011 - 2013 by Lukasz Dobrogowski <lukasz.dobrogowski@gmail.com>
+   Copyright (C) 2011 - 2014 by Lukasz Dobrogowski <lukasz.dobrogowski@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -44,11 +44,9 @@ public:
 	boost::optional<std::string> campaign_scenario;
 	/// True if --clock was given on the command line. Enables
 	bool clock;
-	/// True if --config-path was given on the command line. Prints path to user config directory and exits.
-	bool config_path;
-	/// Non-empty if --config-dir was given on the command line. Sets the config dir to the specified one.
-	boost::optional<std::string> config_dir;
-	/// Non-empty if --config-dir was given on the command line. Sets the config dir to the specified one.
+	/// True if --data-path was given on the command line. Prints path to data directory and exits.
+	bool data_path;
+	/// Non-empty if --data-dir was given on the command line. Sets the config dir to the specified one.
 	boost::optional<std::string> data_dir;
 	/// True if --debug was given on the command line. Enables debug mode.
 	bool debug;
@@ -77,10 +75,14 @@ public:
 	/// Contains parsed arguments of --log-* (e.g. --log-debug).
 	/// Vector of pairs (severity, log domain).
 	boost::optional<std::vector<boost::tuple<int, std::string> > > log;
+	/// Non-empty if --log-strict was given
+	boost::optional<int> log_strict_level;
 	/// Non-empty if --load was given on the command line. Savegame specified to load after start.
 	boost::optional<std::string> load;
 	/// Non-empty if --logdomains was given on the command line. Prints possible logdomains filtered by given string and exits.
 	boost::optional<std::string> logdomains;
+	/// True if --log-precise was given on the command line. Shows timestamps in log with more precision.
+	bool log_precise_timestamps;
 	/// True if --multiplayer was given on the command line. Goes directly into multiplayer mode.
 	bool multiplayer;
 	/// Non-empty if --ai-config was given on the command line. Vector of pairs (side number, value). Dependent on --multiplayer.
@@ -99,6 +101,8 @@ public:
 	boost::optional<std::string> multiplayer_label;
 	/// Non-empty if --parm was given on the command line. Vector of pairs (side number, parm name, parm value). Dependent on --multiplayer.
 	boost::optional<std::vector<boost::tuple<unsigned int, std::string, std::string> > > multiplayer_parm;
+	/// Repeats specified by --multiplayer-repeat option. Repeats a multiplayer game after it is finished. Dependent on --multiplayer.
+	boost::optional<unsigned int> multiplayer_repeat;
 	/// Non-empty if --scenario was given on the command line. Dependent on --multiplayer.
 	boost::optional<std::string> multiplayer_scenario;
 	/// Non-empty if --side was given on the command line. Vector of pairs (side number, faction id). Dependent on --multiplayer.
@@ -117,8 +121,6 @@ public:
 	bool nomusic;
 	/// True if --nosound was given on the command line. Disables sound.
 	bool nosound;
-	/// True if --new-storyscreens was given on the command line. Hidden option to help testing the work-in-progress new storyscreen code.
-	bool new_storyscreens;
 	/// True if --new-widgets was given on the command line. Hidden option to enable the new widget toolkit.
 	bool new_widgets;
 	/// True if --path was given on the command line. Prints the path to data directory and exits.
@@ -165,6 +167,22 @@ public:
 	bool strict_validation;
 	/// Non-empty if --test was given on the command line. Goes directly into test mode, into a scenario, if specified.
 	boost::optional<std::string> test;
+	/// Non-empty if --unit was given on the command line. Goes directly into unit test mode, into a scenario, if specified.
+	boost::optional<std::string> unit_test;
+	/// True if --unit is used and --showgui is not present.
+	bool headless_unit_test;
+	/// Non-empty if --timeout was given on the command line. Dependent on --unit.
+	boost::optional<unsigned int> timeout;
+	/// True if --noreplaycheck was given on the comand line. Dependent on --unit.
+	bool noreplaycheck;
+	/// True if --userconfig-path was given on the command line. Prints path to user config directory and exits.
+	bool userconfig_path;
+	/// Non-empty if --userconfig-dir was given on the command line. Sets the user config dir to the specified one.
+	boost::optional<std::string> userconfig_dir;
+	/// True if --userdata-path was given on the command line. Prints path to user data directory and exits.
+	bool userdata_path;
+	/// Non-empty if --userdata-dir was given on the command line. Sets the user data dir to the specified one.
+	boost::optional<std::string> userdata_dir;
 	/// True if --validcache was given on the command line. Makes Wesnoth assume the cache is valid.
 	bool validcache;
 	/// True if --version was given on the command line. Prints version and exits.
@@ -175,6 +193,7 @@ public:
 	bool with_replay;
 private:
 	void parse_log_domains_(const std::string &domains_string, const int severity);
+	void parse_log_strictness (const std::string &severity);
 	void parse_resolution_ (const std::string &resolution_string);
 	/// A helper function splitting vector of strings of format unsigned int:string to vector of tuples (unsigned int,string)
 	std::vector<boost::tuple<unsigned int,std::string> > parse_to_uint_string_tuples_(const std::vector<std::string> &strings, char separator = ':');

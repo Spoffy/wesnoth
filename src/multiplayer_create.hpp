@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2007 - 2013
+   Copyright (C) 2007 - 2014
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -18,12 +18,11 @@
 #define MULTIPLAYER_CREATE_HPP_INCLUDED
 
 #include "mp_depcheck.hpp"
-#include "mp_game_settings.hpp"
-#include "mp_options.hpp"
+#include "multiplayer_create_engine.hpp"
 #include "multiplayer_ui.hpp"
 #include "widgets/slider.hpp"
 #include "widgets/combo.hpp"
-#include "mapgen.hpp"
+#include "generators/mapgen.hpp"
 #include "tooltips.hpp"
 
 namespace mp {
@@ -31,11 +30,11 @@ namespace mp {
 class create : public mp::ui
 {
 public:
-	create(game_display& dist, const config& game_config, chat& c, config& gamelist, bool local_players_only);
+	create(game_display& disp, const config& game_config, saved_game& state,
+		chat& c, config& gamelist);
 	~create();
 
-	mp_game_settings& get_parameters();
-	int num_turns() const { return num_turns_; }
+	const mp_game_settings& get_parameters();
 
 protected:
 	virtual void layout_children(const SDL_Rect& rect);
@@ -43,81 +42,58 @@ protected:
 	virtual void hide_children(bool hide=true);
 
 private:
+	void init_level_type_changed(size_t index);
+	void init_level_changed(size_t index);
 
 	void synchronize_selections();
 
-	bool local_players_only_;
+	void draw_level_image();
+
+	void set_description(const std::string& description);
+
+	void update_mod_menu_images();
+
+	std::string select_campaign_difficulty();
 
 	tooltips::manager tooltip_manager_;
 	int era_selection_;
-	int map_selection_;
-	int mp_countdown_init_time_;
-	int mp_countdown_reservoir_time_;
+	int mod_selection_;
+	int level_selection_;
 
+	gui::menu eras_menu_;
+	gui::menu levels_menu_;
+	gui::menu mods_menu_;
 
-	std::vector<std::string> user_maps_;
-	std::vector<std::string> map_options_;
-	config available_mods_;
-
-	/**
-	 * Due to maps not available the index of the selected map and mp scenarios
-	 * is not 1:1 so we use a lookup table.
-	 */
-	std::vector<size_t> map_index_;
-
-	gui::menu maps_menu_;
-	gui::slider turns_slider_;
-	gui::label turns_label_;
-	gui::button countdown_game_;
-	gui::slider countdown_init_time_slider_;
-	gui::label countdown_init_time_label_;
-	gui::slider countdown_reservoir_time_slider_;
-	gui::label countdown_reservoir_time_label_;
-	gui::label countdown_turn_bonus_label_;
-	gui::slider countdown_turn_bonus_slider_;
-	gui::label countdown_action_bonus_label_;
-	gui::slider countdown_action_bonus_slider_;
-	gui::slider village_gold_slider_;
-	gui::label village_gold_label_;
-	gui::slider village_support_slider_;
-	gui::label village_support_label_;
-	gui::slider xp_modifier_slider_;
-	gui::label xp_modifier_label_;
-
-	gui::label name_entry_label_;
-	gui::label num_players_label_;
-	gui::label map_size_label_;
+	gui::label filter_name_label_;
+	gui::label filter_num_players_label_;
+	gui::label map_generator_label_;
 	gui::label era_label_;
-	gui::label map_label_;
+	gui::label no_era_label_;
+	gui::label mod_label_;
+	gui::label map_size_label_;
+	gui::label num_players_label_;
+	gui::label level_type_label_;
 
-	gui::button use_map_settings_;
-	gui::button random_start_time_;
-	gui::button fog_game_;
-	gui::button shroud_game_;
-	gui::button observers_game_;
-	gui::button shuffle_sides_;
-	gui::button options_;
-	gui::button cancel_game_;
 	gui::button launch_game_;
+	gui::button cancel_game_;
 	gui::button regenerate_map_;
 	gui::button generator_settings_;
-	gui::button password_button_;
-	gui::button choose_mods_;
+	gui::button load_game_;
+	gui::button select_mod_;
 
-	gui::combo era_combo_;
-	gui::combo vision_combo_;
-	gui::textbox name_entry_;
+	gui::combo level_type_combo_;
 
-	util::scoped_ptr<surface_restorer> minimap_restorer_;
-	SDL_Rect minimap_rect_;
+	gui::slider filter_num_players_slider_;
 
-	util::scoped_ptr<map_generator> generator_;
+	gui::textbox description_;
+	gui::textbox filter_name_;
 
-	int num_turns_;
-	mp_game_settings parameters_;
+	util::scoped_ptr<surface_restorer> image_restorer_;
+	SDL_Rect image_rect_;
 
-	depcheck::manager dependency_manager_;
-	options::manager options_manager_;
+	std::vector<level::TYPE> available_level_types_;
+
+	create_engine engine_;
 };
 
 } // end namespace mp

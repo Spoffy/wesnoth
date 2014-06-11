@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 #include "commandline_options.hpp"
 #include "game_config_manager.hpp"
 #include "game_controller.hpp"
+#include "gui/dialogs/core_selection.hpp"
 #include "gui/dialogs/title_screen.hpp"
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
 #include "gui/widgets/debug.hpp"
@@ -27,9 +28,11 @@
 #include "gui/widgets/window.hpp"
 #include "help.hpp"
 #include "loadscreen.hpp"
+#include "log.hpp"
 #include "playcampaign.hpp"
 #include "preferences_display.hpp"
 #include "replay.hpp"
+#include "sdl/exception.hpp"
 #include "serialization/binary_or_text.hpp"
 #include "serialization/parser.hpp"
 #include "serialization/validator.hpp"
@@ -47,13 +50,11 @@
 #include <boost/iostreams/filter/bzip2.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
 
+#include <SDL.h>
+
+
 #ifdef HAVE_VISUAL_LEAK_DETECTOR
 #include "vld.h"
-#endif
-
-// Minimum stack cookie to prevent stack overflow on AmigaOS4
-#ifdef __amigaos4__
-const char __attribute__((used)) stackcookie[] = "\0$STACK: 16000000";
 #endif
 
 static lg::log_domain log_config("config");
@@ -70,9 +71,6 @@ static lg::log_domain log_preprocessor("preprocessor");
 static void safe_exit(int res) {
 
 	LOG_GENERAL << "exiting with code " << res << "\n";
-#ifdef OS2 /* required to correctly shutdown SDL on OS/2 */
-        SDL_Quit();
-#endif
 	exit(res);
 }
 
@@ -142,7 +140,6 @@ static void bzip2_decode(const std::string & input_file, const std::string & out
 
 static void handle_preprocess_command(const commandline_options& cmdline_opts)
 {
-	std::string output_macros_file;
 	preproc_map input_macros;
 
 	if( cmdline_opts.preprocess_input_macros ) {
@@ -156,8 +153,13 @@ static void handle_preprocess_command(const commandline_options& cmdline_opts)
 		std::cerr << SDL_GetTicks() << " Reading cached defines from: " << file << "\n";
 
 		config cfg;
-		scoped_istream stream = istream_file( file );
-		read( cfg, *stream );
+
+		try {
+			scoped_istream stream = istream_file( file );
+			read( cfg, *stream );
+		} catch (config::error & e) {
+			std::cerr << "Caught a config error while parsing file '" << file << "':\n" << e.message << std::endl;
+		}
 
 		int read = 0;
 
@@ -199,7 +201,7 @@ static void handle_preprocess_command(const commandline_options& cmdline_opts)
 			}
 			else if (define == "NO_TERRAIN_GFX")
 			{
-				std::cerr << "'NO_TERRAIN_GFX' defined.\n";
+				std::cerr << "'NO_TERRAIN_GFX' defined." << std::endl;
 				skipTerrainGFX = true;
 			}
 		}
@@ -231,12 +233,6 @@ static void handle_preprocess_command(const commandline_options& cmdline_opts)
 	preprocess_resource(resourceToProcess, &defines_map, true,true, targetDir);
 	std::cerr << "acquired " << (defines_map.size() - input_macros.size())
 		<< " total defines.\n";
-
-	if( cmdline_opts.preprocess_output_macros &&
-		!cmdline_opts.preprocess_output_macros->empty()) {
-
-			output_macros_file = *cmdline_opts.preprocess_output_macros;
-	}
 
 	if ( cmdline_opts.preprocess_output_macros )
 	{
@@ -273,10 +269,17 @@ static int process_command_args(const commandline_options& cmdline_opts) {
 
 	// Options that don't change behavior based on any others should be checked alphabetically below.
 
-	if(cmdline_opts.config_dir) {
-		set_preferences_dir(*cmdline_opts.config_dir);
+	if(cmdline_opts.userconfig_dir) {
+		set_user_config_dir(*cmdline_opts.userconfig_dir);
 	}
-	if(cmdline_opts.config_path) {
+	if(cmdline_opts.userconfig_path) {
+		std::cout << get_user_config_dir() << '\n';
+		return 0;
+	}
+	if(cmdline_opts.userdata_dir) {
+		set_user_data_dir(*cmdline_opts.userdata_dir);
+	}
+	if(cmdline_opts.userdata_path) {
 		std::cout << get_user_data_dir() << '\n';
 		return 0;
 	}
@@ -300,6 +303,10 @@ static int process_command_args(const commandline_options& cmdline_opts) {
 		}
 	// don't update font as we already updating it in game ctor
 	//font_manager_.update_font_path();
+	}
+	if(cmdline_opts.data_path) {
+		std::cout << game_config::path << '\n';
+		return 0;
 	}
 	if(cmdline_opts.debug_lua) {
 		game_config::debug_lua = true;
@@ -358,12 +365,19 @@ static int process_command_args(const commandline_options& cmdline_opts) {
 		std::cout <<  game_config::path << "\n";
 		return 0;
 	}
+	if(cmdline_opts.log_precise_timestamps) {
+		lg::precise_timestamps(true);
+	}
 	if(cmdline_opts.rng_seed) {
 		srand(*cmdline_opts.rng_seed);
 	}
 	if(cmdline_opts.screenshot) {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+		SDL_setenv("SDL_VIDEODRIVER", "dummy", 1);
+#else
 		static char opt[] = "SDL_VIDEODRIVER=dummy";
 		SDL_putenv(opt);
+#endif
 	}
 	if(cmdline_opts.strict_validation) {
 		strict_validation_enabled = true;
@@ -420,9 +434,6 @@ static int do_gameloop(int argc, char** argv)
 		return finished;
 	}
 
-	//ensure recorder has an actually random seed instead of what it got during
-	//static initialization (before any srand() call)
-	recorder.set_seed(rand());
 	boost::scoped_ptr<game_controller> game(
 		new game_controller(cmdline_opts,argv[0]));
 	const int start_ticks = SDL_GetTicks();
@@ -462,6 +473,10 @@ static int do_gameloop(int argc, char** argv)
 	const cursor::manager cursor_manager;
 	cursor::set(cursor::WAIT);
 
+#if (defined(_X11) && !defined(__APPLE__)) || defined(_WIN32)
+	SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
+#endif
+
 	loadscreen::global_loadscreen_manager loadscreen_manager(game->disp().video());
 
 	loadscreen::start_stage("init gui");
@@ -488,10 +503,6 @@ static int do_gameloop(int argc, char** argv)
 	loadscreen::start_stage("refresh addons");
 	refresh_addon_version_info_cache();
 
-#if (defined(_X11) && !defined(__APPLE__)) || defined(_WIN32)
-	SDL_EventState(SDL_SYSWMEVENT, SDL_ENABLE);
-#endif
-
 	config tips_of_day;
 
 	loadscreen::start_stage("titlescreen");
@@ -506,11 +517,11 @@ static int do_gameloop(int argc, char** argv)
 
 		statistics::fresh_stats();
 
-        if (!game->is_loading()) {
+		if (!game->is_loading()) {
 			const config &cfg =
 			    config_manager.game_config().child("titlescreen_music");
 			if (cfg) {
-	            sound::play_music_repeatedly(game_config::title_music);
+				sound::play_music_repeatedly(game_config::title_music);
 				BOOST_FOREACH(const config &i, cfg.child_range("music")) {
 					sound::play_music_config(i);
 				}
@@ -519,9 +530,24 @@ static int do_gameloop(int argc, char** argv)
 				sound::empty_playlist();
 				sound::stop_music();
 			}
-        }
+		}
 
 		loadscreen_manager.reset();
+
+		if(cmdline_opts.unit_test) {
+			if(cmdline_opts.timeout) {
+				std::cerr << "The wesnoth built-in timeout feature has been removed.\n" << std::endl;
+				std::cerr << "Please use a platform-specific script which will kill the overtime process instead.\n" << std::endl;
+				std::cerr << "For examples in bash, or in windows cmd, see the forums, or the wesnoth repository." << std::endl;
+				std::cerr << "The bash script is called `run_wml_tests`, the windows script is part of the VC project.\n" << std::endl;
+			}
+			int worker_result = game->unit_test();
+			std::cerr << ((worker_result == 0) ? "PASS TEST " : "FAIL TEST ")
+				<< ((worker_result == 3) ? "(INVALID REPLAY)" : "")
+				<< ((worker_result == 4) ? "(ERRORED REPLAY)" : "")
+				<< ": "<<*cmdline_opts.unit_test << std::endl;
+			return worker_result;
+		}
 
 		if(game->play_test() == false) {
 			return 0;
@@ -619,6 +645,27 @@ static int do_gameloop(int argc, char** argv)
 			// section in the game help!
 			help::help_manager help_manager(&config_manager.game_config());
 			if(manage_addons(game->disp())) {
+				config_manager.reload_changed_game_config();
+			}
+			continue;
+		} else if(res == gui2::ttitle_screen::CORES) {
+
+			int current = 0;
+			std::vector<config> cores;
+			BOOST_FOREACH(const config& core,
+					resources::config_manager->game_config().child_range("core")) {
+				cores.push_back(core);
+				if (core["id"] == preferences::core_id())
+					current = cores.size() -1;
+			}
+
+			gui2::tcore_selection core_dlg(cores, current);
+			if (core_dlg.show(game->disp().video())) {
+				int core_index = core_dlg.get_choice();
+				const std::string& wml_tree_root = cores[core_index]["path"];
+				const std::string& core_id = cores[core_index]["id"];
+				preferences::set_wml_tree_root(wml_tree_root);
+				preferences::set_core_id(core_id);
 				config_manager.reload_changed_game_config();
 			}
 			continue;
@@ -721,16 +768,29 @@ int main(int argc, char** argv)
 		std::cerr << e.what()
 			<< "\n\nGame will be aborted.\n";
 		return 1;
+	} catch(const sdl::texception& e) {
+		std::cerr << e.what();
+		return 1;
 	} catch(game::error &) {
 		// A message has already been displayed.
-		return 1;
-	} catch(std::ios::failure &) {
-		// This is required mainly for when compiling with Microsoft Visual C++ Compiler
-		// so that the game will not crash with a Runtime Error
 		return 1;
 	} catch(std::bad_alloc&) {
 		std::cerr << "Ran out of memory. Aborted.\n";
 		return ENOMEM;
+	} catch(std::exception & e) { //Added this in case the others fall through.
+		std::cerr << "Caught general exception: " << e.what() << std::endl;
+		return 1;
+	} catch(std::string & e) {
+		std::cerr << "Caught a string thrown as an exception: " << e << std::endl;
+		return 1;
+	} catch(const char * e) {
+		std::cerr << "Caught a string thrown as an exception: " << e << std::endl;
+		return 1;
+#if !defined(NO_CATCH_AT_GAME_END)
+	} catch(...) { //Added this to ensure that even when we terminate with `throw 42`, the exception is caught and all destructors are actually called.
+		std::cerr << "Caught unspecified general exception. Terminating." << std::endl; //Apparently, some compilers will simply terminate without
+		return 1;									//calling destructors if there is no one to catch it at all.
+#endif
 	}
 
 	return 0;

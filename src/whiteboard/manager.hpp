@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010 - 2013 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
+ Copyright (C) 2010 - 2014 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
  Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
  This program is free software; you can redistribute it and/or modify
@@ -88,7 +88,7 @@ public:
 	void on_deselect_hex(){ erase_temp_move();}
 	void on_gamestate_change();
 	void on_viewer_change(size_t team_index);
-	void on_change_controller(int side, team& t);
+	void on_change_controller(int side, const team& t);
 	/** Handles various cleanup right before removing an action from the queue */
 	void pre_delete_action(action_ptr action);
 	/** Handles various cleanup right after removing an action from the queue */
@@ -157,9 +157,6 @@ public:
 	/** Executes all actions for the current turn in sequence
 	 *  @return true if the there are no more actions left for this turn when the method returns */
 	bool execute_all_actions();
-	/** Called by the game controller to let the whiteboard continue executing all actions
-	 *  if it stopped to wait for an attack to complete on reception of its random seed from server */
-	void continue_execute_all();
 	/** Deletes last action in the queue for current side */
 	void contextual_delete();
 	/** Moves the action determined by the UI toward the beginning of the queue  */

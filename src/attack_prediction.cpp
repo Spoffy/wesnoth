@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Rusty Russell <rusty@rustcorp.com.au>
+   Copyright (C) 2006 - 2014 by Rusty Russell <rusty@rustcorp.com.au>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@
  * Compile with -O3 -DBENCHMARK for speed testing, and with -DCHECK for
  * testing correctness (redirect the output to a file, then compile
  * utils/wesnoth-attack-sim.c and run that with the arguments
- * --check <file name>).
+ * --check \<file name\>).
  * For either option, use -DHUMAN_READABLE if you want to see the results
  * from each combat displayed in a prettier format (but no longer suitable
  * for wesnoth-attack-sim.c).

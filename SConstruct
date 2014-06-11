@@ -31,7 +31,7 @@ try:
     version = build_config["VERSION"]
     print "Building Wesnoth version %s" % version
 except KeyError:
-    print "Couldn't determin the Wesnoth version number, bailing out!"
+    print "Couldn't determine the Wesnoth version number, bailing out!"
     sys.exit(1)
 
 #
@@ -103,15 +103,22 @@ opts.AddVariables(
     BoolVariable('cxx0x', 'Use C++0x features.', False),
     BoolVariable('openmp', 'Enable openmp use.', False),
     BoolVariable("fast", "Make scons faster at cost of less precise dependency tracking.", False),
-    BoolVariable("lockfile", "Create a lockfile to prevent multiple instances of scons from being run at the same time on this working copy.", False)
+    BoolVariable("lockfile", "Create a lockfile to prevent multiple instances of scons from being run at the same time on this working copy.", False),
+    BoolVariable("sdl2", "Build with SDL2 support (experimental!)", False)
     )
 
 #
 # Setup
 #
 
-sys.path.insert(0, "./scons")
-env = Environment(tools=["tar", "gettext", "install", "python_devel", "scanreplace"], options = opts, toolpath = ["scons"])
+toolpath = ["scons"]
+for repo in Dir(".").repositories:
+  # SCons repositories are additional dirs to look for source and lib files.
+  # It is possible to make out of tree builds by running SCons outside of this
+  # source code root and supplying this path with -Y option.
+  toolpath.append(repo.abspath + "/scons")
+sys.path = toolpath + sys.path
+env = Environment(tools=["tar", "gettext", "install", "python_devel", "scanreplace"], options = opts, toolpath = toolpath)
 
 if env["lockfile"]:
     print "Creating lockfile"
@@ -124,7 +131,8 @@ opts.Save(GetOption("option_cache"), env)
 env.SConsignFile("$build_dir/sconsign.dblite")
 
 # Make sure the user's environment is always available
-env['ENV']['PATH'] = os.environ["PATH"]
+env['ENV']['PATH'] = os.environ.get("PATH")
+env['ENV']['TERM'] = os.environ.get("TERM")
 if env["PLATFORM"] == "win32":
     env.Tool("mingw")
 elif env["PLATFORM"] == "sunos":
@@ -262,13 +270,16 @@ if sys.platform == 'win32':
 #
 # Check some preconditions
 #
+print "---[checking prerequisites]---"
 
 def Warning(message):
     print message
     return False
 
 from metasconf import init_metasconf
-configure_args = dict(custom_tests = init_metasconf(env, ["cplusplus", "python_devel", "sdl", "boost", "pango", "pkgconfig", "gettext", "lua"]), config_h = "config.h",
+configure_args = dict(
+    custom_tests = init_metasconf(env, ["cplusplus", "python_devel", "sdl", "boost", "pango", "pkgconfig", "gettext", "lua"]),
+    config_h = "$build_dir/config.h",
     log_file="$build_dir/config.log", conf_dir="$build_dir/sconf_temp")
 
 env.MergeFlags(env["extra_flags_config"])
@@ -284,17 +295,15 @@ if env["prereqs"]:
     conf.CheckLib("m")
     conf.CheckFunc("round")
 
-    def CheckANA(conf, do_check):
-        if not do_check:
-            return True
-        return conf.CheckAsio()
-
     def CheckAsio(conf):
         if env["PLATFORM"] == 'win32':
             conf.env.Append(LIBS = ["libws2_32"])
-        return conf.CheckLib("pthread") and \
-        conf.CheckBoost("system") and \
-        conf.CheckBoost("asio", header_only = True)
+            have_libpthread = True
+        else:
+            have_libpthread = conf.CheckLib("pthread")
+        return have_libpthread and \
+            conf.CheckBoost("system") and \
+            conf.CheckBoost("asio", header_only = True)
 
     if env['host'] in ['x86_64-nacl', 'i686-nacl']:
         # libppapi_cpp has a reverse dependency on the following function
@@ -317,16 +326,34 @@ if env["prereqs"]:
         conf.CheckLib("vorbis")
         conf.CheckLib("mikmod")
 
-    have_server_prereqs = \
+    if env['sdl2']:
+        have_sdl_net = \
+        conf.CheckSDL(require_version = '2.0.0') and \
+        conf.CheckSDL("SDL2_net", header_file = "SDL_net")
+
+        have_sdl_other = \
+        conf.CheckSDL("SDL2_ttf", header_file = "SDL_ttf") and \
+        conf.CheckSDL("SDL2_mixer", header_file = "SDL_mixer") and \
+        conf.CheckSDL("SDL2_image", header_file = "SDL_image")
+
+    else:
+        have_sdl_net = \
+        conf.CheckSDL(require_version = '1.2.0') and \
+        conf.CheckSDL('SDL_net')
+
+        have_sdl_other = \
+        conf.CheckSDL("SDL_ttf", require_version = "2.0.8") and \
+        conf.CheckSDL("SDL_mixer", require_version = '1.2.0') and \
+        conf.CheckSDL("SDL_image", require_version = '1.2.0')
+
+    have_server_prereqs = have_sdl_net and \
         conf.CheckCPlusPlus(gcc_version = "3.3") and \
         conf.CheckGettextLibintl() and \
         conf.CheckBoost("iostreams", require_version = "1.34.1") and \
         conf.CheckBoostIostreamsGZip() and \
         conf.CheckBoostIostreamsBZip2() and \
-        conf.CheckBoost("smart_ptr", header_only = True) and \
-        conf.CheckSDL(require_version = '1.2.7') and \
-        conf.CheckSDL('SDL_net') and \
-        CheckANA(conf, env["use_network_ana"]) or Warning("Base prerequisites are not met.")
+        conf.CheckBoost("smart_ptr", header_only = True) or \
+            Warning("WARN: Base prerequisites are not met")
 
     have_umcd_prereqs = have_server_prereqs and \
         CheckAsio(conf) and \
@@ -343,15 +370,14 @@ if env["prereqs"]:
     env = conf.Finish()
     client_env = env.Clone()
     conf = client_env.Configure(**configure_args)
-    have_client_prereqs = have_umcd_prereqs and \
+    have_client_prereqs = have_umcd_prereqs and have_sdl_other and \
         CheckAsio(conf) and \
         conf.CheckPango("cairo", require_version = "1.21.3") and \
         conf.CheckPKG("fontconfig") and \
-        conf.CheckSDL("SDL_ttf", require_version = "2.0.8") and \
-        conf.CheckSDL("SDL_mixer", require_version = '1.2.0') and \
+        conf.CheckBoost("program_options", require_version="1.35.0") and \
+        conf.CheckBoost("regex", require_version = "1.35.0") and \
         conf.CheckLib("vorbisfile") and \
-        conf.CheckSDL("SDL_image", require_version = '1.2.0') and \
-        conf.CheckOgg() or Warning("Client prerequisites are not met. wesnoth, cutter and exploder cannot be built.")
+        conf.CheckOgg() or Warning("WARN: Client prerequisites are not met. wesnoth, cutter and exploder cannot be built")
 
     have_X = False
     if have_client_prereqs:
@@ -366,26 +392,32 @@ if env["prereqs"]:
             client_env['fribidi'] = conf.CheckPKG('fribidi >= 0.10.9') or Warning("Can't find libfribidi, disabling freebidi support.")
 
     if env["forum_user_handler"]:
-        env.ParseConfig("mysql_config --libs --cflags")
+        flags = env.ParseFlags("!mysql_config --libs --cflags")
+        try: # Some versions of mysql_config add -DNDEBUG but we don't want it
+            flags["CPPDEFINES"].remove("NDEBUG")
+        except ValueError:
+            pass
         env.Append(CPPDEFINES = ["HAVE_MYSQLPP"])
+        env.MergeFlags(flags)
 
     client_env = conf.Finish()
 
     test_env = client_env.Clone()
     conf = test_env.Configure(**configure_args)
 
-    have_test_prereqs = have_client_prereqs and have_server_prereqs and conf.CheckBoost('unit_test_framework') or Warning("Unit tests are disabled because their prerequisites are not met.")
-    
-    have_umcd_test_prereqs = have_umcd_prereqs or Warning("UMCD unit tests prerequisites are not met. umcd_test cannot be built.");
+    have_test_prereqs = have_client_prereqs and have_server_prereqs and conf.CheckBoost('unit_test_framework') \
+                            or Warning("WARN: Unit tests are disabled because their prerequisites are not met")
 
-    test_env = conf.Finish()
+    have_umcd_test_prereqs = have_umcd_prereqs or Warning("UMCD unit tests prerequisites are not met. umcd_test cannot be built.");
+    
+	test_env = conf.Finish()
     if not have_test_prereqs and "test" in env["default_targets"]:
         env["default_targets"].remove("test")
     if not have_umcd_test_prereqs and "umcd_test" in env["default_targets"]:
         env["default_targets"].remove("umcd_test")
 
-    print env.subst("If any config checks fail, look in $build_dir/config.log for details")
-    print "If a check fails spuriously due to caching, use --config=force to force its rerun"
+    print "  " + env.subst("If any config checks fail, look in $build_dir/config.log for details")
+    print "  If a check fails spuriously due to caching, use --config=force to force its rerun"
 
 else:
     have_client_prereqs = True
@@ -413,9 +445,13 @@ if not env['nls']:
 #
 # Implement configuration switches
 #
+print "---[applying configuration]---"
 
 for env in [test_env, client_env, env]:
-    env.Prepend(CPPPATH = ["#/", "#/src"])
+    build_root="#/"
+    if os.path.isabs(env["build_dir"]):
+        build_root = ""
+    env.Prepend(CPPPATH = [build_root + "$build_dir", "#/src"])
 
     env.Append(CPPDEFINES = ["HAVE_CONFIG_H"])
 
@@ -436,6 +472,10 @@ for env in [test_env, client_env, env]:
 
         env["OPT_FLAGS"] = "-O2"
         env["DEBUG_FLAGS"] = Split("-O0 -DDEBUG -ggdb3")
+
+    if "clang" in env["CXX"]:
+        # Silence warnings about unused -I options and unknown warning switches.
+        env.AppendUnique(CCFLAGS = Split("-Qunused-arguments -Wno-unknown-warning-option"))
 
     if "suncc" in env["TOOLS"]:
         env["OPT_FLAGS"] = "-g0"
@@ -464,7 +504,7 @@ if not env['static_test']:
     test_env.Append(CPPDEFINES = "BOOST_TEST_DYN_LINK")
 
 try:
-    if call("utils/autorevision -t h > revision.h", shell=True) == 0:
+    if call(env.subst("utils/autorevision -t h > $build_dir/revision.h"), shell=True) == 0:
         env["have_autorevision"] = True
 except:
     pass
@@ -540,7 +580,7 @@ def CopyFilter(fn):
 
 env["copy_filter"] = CopyFilter
 
-linguas = Split(open("po/LINGUAS").read())
+linguas = Split(File("po/LINGUAS").get_contents())
 
 def InstallManpages(env, component):
     env.InstallData("mandir", component, os.path.join("doc", "man", component + ".6"), "man6")

@@ -26,6 +26,7 @@
 #include "minimap.hpp"
 #include "multiplayer_lobby.hpp"
 #include "gettext.hpp"
+#include "gui/auxiliary/old_markup.hpp"
 #include "log.hpp"
 #include "playmp_controller.hpp"
 #include "sound.hpp"
@@ -46,7 +47,8 @@ gamebrowser::gamebrowser(CVideo& video, const config &map_hashes) :
 	menu(video, empty_string_vector, false, -1, -1, NULL, &menu::bluebg_style),
 	gold_icon_locator_("themes/gold.png"),
 	xp_icon_locator_("themes/units.png"),
-	vision_icon_locator_("misc/invisible.png"),
+	map_size_icon_locator_("misc/map.png"),
+	vision_icon_locator_("misc/visibility.png"),
 	time_limit_icon_locator_("themes/sand-clock.png"),
 	observer_icon_locator_("misc/eye.png"),
 	no_observer_icon_locator_("misc/no_observer.png"),
@@ -56,6 +58,7 @@ gamebrowser::gamebrowser(CVideo& video, const config &map_hashes) :
 	margin_(5),
 	minimap_size_(item_height_ - 2*margin_),
 	h_padding_(5),
+	h_padding_image_to_text_(4),
 	header_height_(20),
 	selected_(0),
 	visible_range_(std::pair<size_t,size_t>(0,0)),
@@ -92,7 +95,7 @@ SDL_Rect gamebrowser::get_item_rect(size_t index) const {
 		return res;
 	}
 	const SDL_Rect& loc = inner_location();
-	return create_rect(
+	return sdl::create_rect(
 			  loc.x
 			, loc.y + (index - visible_range_.first) * row_height()
 			, loc.w
@@ -154,6 +157,9 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 			font_color = font::BAD_COLOR;
 		}
 	}
+	if(!game.have_scenario && font_color != font::BAD_COLOR) {
+		font_color = font::DISABLED_COLOR;
+	}
 	if(!game.have_era && font_color != font::BAD_COLOR) {
 		font_color = font::DISABLED_COLOR;
 		no_era_string = _(" (Unknown Era)");
@@ -163,14 +169,14 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 	}
 
 	const surface status_text(font::get_rendered_text(game.status,
-	    font::SIZE_NORMAL, font_color));
+	    font::SIZE_NORMAL, font_color, TTF_STYLE_BOLD));
 	const int status_text_width = status_text ? status_text->w : 0;
 
 	// First line: draw game name
 	const surface name_surf(font::get_rendered_text(
 	    font::make_text_ellipsis(game.name + no_era_string, font::SIZE_PLUS,
 	        (item_rect.x + item_rect.w) - xpos - margin_ - status_text_width - h_padding_),
-	    font::SIZE_PLUS, font_color));
+	    font::SIZE_PLUS, font_color, TTF_STYLE_BOLD));
 	video().blit_surface(xpos, ypos, name_surf);
 
 	// Draw status text
@@ -196,12 +202,12 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 	ypos = item_rect.y + 2*item_rect.h/3 - margin_;
 
 	// Draw modifications info
-	const surface mod_info_surf(font::get_rendered_text(
-	    font::make_text_ellipsis(game.mod_info, font::SIZE_NORMAL,
+	const surface era_and_mod_info_surf(font::get_rendered_text(
+	    font::make_text_ellipsis(game.era_and_mod_info, font::SIZE_NORMAL,
 	        (item_rect.x + item_rect.w) - xpos - margin_),
 		font::SIZE_NORMAL, font::NORMAL_COLOR));
-	if(mod_info_surf) {
-		video().blit_surface(xpos, ypos - mod_info_surf->h/2, mod_info_surf);
+	if(era_and_mod_info_surf) {
+		video().blit_surface(xpos, ypos - era_and_mod_info_surf->h/2, era_and_mod_info_surf);
 	}
 
 	// Fourth line
@@ -235,7 +241,7 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 	if(gold_icon) {
 		video().blit_surface(xpos, ypos - gold_icon->h/2, gold_icon);
 
-		xpos += gold_icon->w + h_padding_;
+		xpos += gold_icon->w + h_padding_image_to_text_;
 	}
 
 	// Draw gold text
@@ -252,7 +258,7 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 	if(xp_icon) {
 		video().blit_surface(xpos, ypos - xp_icon->h/2, xp_icon);
 
-		xpos += xp_icon->w + h_padding_;
+		xpos += xp_icon->w + h_padding_image_to_text_;
 	}
 
 	// Draw xp text
@@ -263,12 +269,31 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 		xpos += xp_text->w + 2 * h_padding_;
 	}
 
+	if(!game.map_data.empty()) {
+		// Draw map size icon
+		const surface map_size_icon(image::get_image(map_size_icon_locator_));
+		if(map_size_icon) {
+			video().blit_surface(xpos, ypos - map_size_icon->h/2, map_size_icon);
+
+			xpos += map_size_icon->w + h_padding_image_to_text_;
+		}
+
+		// Draw map size text
+		const surface map_size_text(font::get_rendered_text(game.map_info_size,
+			font::SIZE_NORMAL, font::NORMAL_COLOR));
+		if(map_size_text) {
+			video().blit_surface(xpos, ypos - map_size_text->h/2, map_size_text);
+
+			xpos += map_size_text->w + 2 * h_padding_;
+		}
+	}
+
 	if(!game.time_limit.empty()) {
 		// Draw time icon
 		const surface time_icon(image::get_image(time_limit_icon_locator_));
 		video().blit_surface(xpos, ypos - time_icon->h/2, time_icon);
 
-		xpos += time_icon->w + h_padding_;
+		xpos += time_icon->w + h_padding_image_to_text_;
 
 		// Draw time text
 		const surface time_text(font::get_rendered_text(game.time_limit,
@@ -283,7 +308,7 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 	if(vision_icon) {
 		video().blit_surface(xpos, ypos - vision_icon->h/2, vision_icon);
 
-		xpos += vision_icon->w + h_padding_;
+		xpos += vision_icon->w + h_padding_image_to_text_;
 	}
 
 	// Draw vision text
@@ -298,7 +323,7 @@ void gamebrowser::draw_row(const size_t index, const SDL_Rect& item_rect, ROW_TY
 
 	// Draw map settings text
 	if (game.use_map_settings) {
-		xpos += vision_text->w + 4 * h_padding_;
+		xpos += vision_text->w + 3 * h_padding_;
 		const surface map_settings_text(font::get_rendered_text(
 		    font::make_text_ellipsis(_("Use map settings"), font::SIZE_NORMAL,
 		        (item_rect.x + item_rect.w) - xpos - margin_),
@@ -366,16 +391,16 @@ void gamebrowser::handle_event(const SDL_Event& event)
 			x = event.button.x;
 			y = event.button.y;
 		} else {
-			x = reinterpret_cast<long>(event.user.data1);
-			y = reinterpret_cast<long>(event.user.data2);
+			x = reinterpret_cast<size_t>(event.user.data1);
+			y = reinterpret_cast<size_t>(event.user.data2);
 		}
 		const SDL_Rect& loc = inner_location();
 
-		if(!games_.empty() && point_in_rect(x, y, loc)) {
+		if(!games_.empty() && sdl::point_in_rect(x, y, loc)) {
 			for(size_t i = visible_range_.first; i != visible_range_.second; ++i) {
 				const SDL_Rect& item_rect = get_item_rect(i);
 
-				if(point_in_rect(x, y, item_rect)) {
+				if(sdl::point_in_rect(x, y, item_rect)) {
 					set_focus(true);
 					selected_ = i;
 					break;
@@ -446,31 +471,101 @@ void gamebrowser::set_game_items(const config& cfg, const config& game_config)
 		games_.back().password_required = game["password"].to_bool();
 		games_.back().reloaded = game["savegame"].to_bool();
 		games_.back().have_era = true;
-		if (!game["mp_era"].empty())
-		{
-			const config &era_cfg = game_config.find_child("era", "id", game["mp_era"]);
-			utils::string_map symbols;
-			symbols["era_id"] = game["mp_era"];
-			if (era_cfg) {
-				games_.back().map_info = era_cfg["name"].str();
-			} else {
-				if (!game["require_era"].to_bool(true)) {
-					games_.back().have_era = true;
-				} else {
-					games_.back().have_era = false;
+		games_.back().have_scenario = true;
+		if (game["mp_campaign"].empty()) {
+			if (!game["mp_scenario"].empty()) {
+				// Check if it's a multiplayer scenario.
+				const config* level_cfg = &game_config.find_child("multiplayer",
+					"id", game["mp_scenario"]);
+				if (!*level_cfg) {
+					// Check if it's a user map.
+					level_cfg = &game_config.find_child("generic_multiplayer",
+						"id", game["mp_scenario"]);
 				}
-				games_.back().map_info = vgettext("Unknown era: $era_id", symbols);
+				if (*level_cfg) {
+					games_.back().map_info = _("Scenario:");
+					games_.back().map_info += " ";
+					games_.back().map_info += (*level_cfg)["name"].str();
+					// Reloaded games do not match the original scenario hash,
+					// so it makes no sense to test them,
+					// they always would appear as remote scenarios.
+					if (map_hashes_ && !games_.back().reloaded) {
+						std::string hash = game["hash"];
+						bool hash_found = false;
+						BOOST_FOREACH(const config::attribute& i,
+							map_hashes_.attribute_range()) {
+
+							if (i.first == game["mp_scenario"] &&
+								i.second == hash) {
+
+								hash_found = true;
+								break;
+							}
+						}
+						if (!hash_found) {
+							games_.back().map_info += " — ";
+							games_.back().map_info += _("Remote scenario");
+							verified = false;
+						}
+					}
+				} else {
+					utils::string_map symbols;
+					symbols["scenario_id"] = game["mp_scenario"];
+					games_.back().map_info =
+						vgettext("Unknown scenario: $scenario_id", symbols);
+					verified = false;
+				}
+			} else {
+				games_.back().map_info = _("Unknown scenario");
 				verified = false;
 			}
-		} else {
-			games_.back().map_info = _("Unknown era");
-			verified = false;
+		} else { // Is a campaign
+			const config* level_cfg = &game_config.find_child("campaign", "id",
+				game["mp_campaign"]);
+			if (*level_cfg) {
+				games_.back().map_info = _("Campaign:");
+				games_.back().map_info += " ";
+				games_.back().map_info += (*level_cfg)["name"].str();
+				games_.back().map_info += " — ";
+				games_.back().map_info += game["mp_scenario_name"].str();
+
+				// Difficulty.
+				const std::vector<std::string> difficulties =
+					utils::split((*level_cfg)["difficulties"]);
+				const std::string difficulty_descriptions =
+					(*level_cfg)["difficulty_descriptions"];
+				std::vector<std::string> difficulty_options =
+					utils::split(difficulty_descriptions, ';');
+				int index = 0;
+				BOOST_FOREACH(const std::string& difficulty, difficulties) {
+					if (difficulty == game["difficulty_define"]) {
+						gui2::tlegacy_menu_item menu_item(difficulty_options[index]);
+						games_.back().map_info += " — ";
+						games_.back().map_info += menu_item.label();
+						games_.back().map_info += " ";
+						games_.back().map_info += menu_item.description();
+
+						break;
+					}
+					index++;
+				}
+
+			} else {
+				utils::string_map symbols;
+				symbols["campaign_id"] = game["mp_campaign"];
+				games_.back().map_info =
+					vgettext("Unknown campaign: $campaign_id", symbols);
+				verified = false;
+
+				if (game["require_scenario"].to_bool(false)) {
+					games_.back().have_scenario = false;
+				}
+			}
 		}
 		games_.back().map_data = game["map_data"].str();
 		if(games_.back().map_data.empty()) {
 			games_.back().map_data = read_map(game["map"]);
 		}
-
 		if(! games_.back().map_data.empty()) {
 			try {
 				std::vector<minimap_cache_item>::iterator i;
@@ -489,7 +584,6 @@ void gamebrowser::set_game_items(const config& cfg, const config& game_config)
 					games_.back().map_info_size = str_cast(map.w()) + utils::unicode_multiplication_sign
 						+ str_cast(map.h());
 				}
-				games_.back().map_info += " — " + games_.back().map_info_size;
 			} catch (incorrect_map_format_error &e) {
 				ERR_CF << "illegal map: " << e.message << '\n';
 				verified = false;
@@ -497,70 +591,53 @@ void gamebrowser::set_game_items(const config& cfg, const config& game_config)
 				ERR_CF <<  "map could not be loaded: " << e.dev_message << '\n';
 				verified = false;
 			}
-		} else {
-			games_.back().map_info += " — ??×??";
 		}
-		games_.back().map_info += " ";
-		if (!game["mp_scenario"].empty())
+
+		if (!game["mp_era"].empty())
 		{
-			// check if it's a multiplayer scenario
-			const config *level_cfg = &game_config.find_child("multiplayer", "id", game["mp_scenario"]);
-			if (!*level_cfg) {
-				// check if it's a user map
-				level_cfg = &game_config.find_child("generic_multiplayer", "id", game["mp_scenario"]);
-			}
-			if (*level_cfg) {
-				games_.back().map_info += (*level_cfg)["name"].str();
-				// reloaded games do not match the original scenario hash,
-				// so it makes no sense to test them, they always would appear
-				// as remote scenarios
-				if (map_hashes_ && !games_.back().reloaded) {
-					std::string hash = game["hash"];
-					bool hash_found = false;
-					BOOST_FOREACH(const config::attribute &i, map_hashes_.attribute_range()) {
-						if (i.first == game["mp_scenario"] && i.second == hash) {
-							hash_found = true;
-							break;
-						}
-					}
-					if(!hash_found) {
-						games_.back().map_info += " — ";
-						games_.back().map_info += _("Remote scenario");
-						verified = false;
-					}
-				}
+			const config &era_cfg = game_config.find_child("era", "id", game["mp_era"]);
+			utils::string_map symbols;
+			symbols["era_id"] = game["mp_era"];
+			if (era_cfg) {
+				games_.back().era_and_mod_info = _("Era:");
+				games_.back().era_and_mod_info += " ";
+				games_.back().era_and_mod_info += era_cfg["name"].str();
 			} else {
-				utils::string_map symbols;
-				symbols["scenario_id"] = game["mp_scenario"];
-				games_.back().map_info += vgettext("Unknown scenario: $scenario_id", symbols);
+				if (!game["require_era"].to_bool(true)) {
+					games_.back().have_era = true;
+				} else {
+					games_.back().have_era = false;
+				}
+				games_.back().era_and_mod_info = vgettext("Unknown era: $era_id", symbols);
 				verified = false;
 			}
 		} else {
-			games_.back().map_info += _("Unknown scenario");
+			games_.back().era_and_mod_info = _("Unknown era");
 			verified = false;
 		}
 
-		games_.back().mod_info += "Modifications: ";
-
 		if (!game.child_or_empty("modification").empty()) {
 			games_.back().have_all_mods = true;
+			games_.back().era_and_mod_info += " — ";
+			games_.back().era_and_mod_info += _("Modifications:");
+			games_.back().era_and_mod_info += " ";
+
 			BOOST_FOREACH (const config& m, game.child_range("modification")) {
 				const config& mod_cfg = game_config.find_child("modification", "id", m["id"]);
 				if (mod_cfg) {
-					games_.back().mod_info += mod_cfg["name"].str();
-					games_.back().mod_info += ", ";
+					games_.back().era_and_mod_info += mod_cfg["name"].str();
+					games_.back().era_and_mod_info += ", ";
 				} else {
-					games_.back().mod_info += m["id"].str();
+					games_.back().era_and_mod_info += m["id"].str();
 					if (m["require_modification"].to_bool(false)) {
 						games_.back().have_all_mods = false;
-						games_.back().mod_info += _(" (missing)");
+						games_.back().era_and_mod_info += _(" (missing)");
 					}
-					games_.back().mod_info += ", ";
+					games_.back().era_and_mod_info += ", ";
 				}
 			}
-			games_.back().mod_info.erase(games_.back().mod_info.size()-2, 2);
+			games_.back().era_and_mod_info.erase(games_.back().era_and_mod_info.size()-2, 2);
 		} else {
-			games_.back().mod_info += "none";
 			games_.back().have_all_mods = true;
 		}
 
@@ -781,7 +858,7 @@ lobby::lobby(game_display& disp, const config& cfg, chat& c, config& gamelist) :
 	observe_game_(disp.video(), _("Observe Game")),
 	join_game_(disp.video(), _("Join Game")),
 	create_game_(disp.video(), _("Create Game")),
-	skip_replay_(disp.video(), _("Quick replays"), gui::button::TYPE_CHECK),
+	replay_options_(disp, std::vector<std::string>()),
 	game_preferences_(disp.video(), _("Preferences")),
 	quit_game_(disp.video(), _("Quit")),
 	apply_filter_(disp.video(), _("Apply filter"), gui::button::TYPE_CHECK),
@@ -795,8 +872,25 @@ lobby::lobby(game_display& disp, const config& cfg, chat& c, config& gamelist) :
 	minimaps_(),
 	search_string_(preferences::fi_text())
 {
-	skip_replay_.set_check(preferences::skip_mp_replay());
-	skip_replay_.set_help_string(_("Skip quickly to the active turn when observing"));
+	std::vector<std::string> replay_options_strings_;
+	replay_options_strings_.push_back(_("Normal replays"));
+	replay_options_strings_.push_back(_("Quick replays"));
+	replay_options_strings_.push_back(_("Enter game blindfolded"));
+
+	replay_options_.set_items(replay_options_strings_);
+
+	std::string help_string1 = _("Skip quickly to the active turn when observing");
+	std::string help_string2 = _("Do not show the map until given control of a side");
+	replay_options_.set_help_string(help_string1 + " / " + help_string2);
+
+	replay_options_.set_selected(0);
+	if (preferences::skip_mp_replay()) {
+		replay_options_.set_selected(1);
+	}
+
+	if (preferences::blindfold_replay()) {
+		replay_options_.set_selected(2);
+	}
 
 	apply_filter_.set_check(preferences::filter_lobby());
 	apply_filter_.set_help_string(_("Enable the games filter. If unchecked all games are shown, regardless of any filter."));
@@ -831,7 +925,7 @@ void lobby::hide_children(bool hide)
 	observe_game_.hide(hide);
 	join_game_.hide(hide);
 	create_game_.hide(hide);
-	skip_replay_.hide(hide);
+	replay_options_.hide(hide);
 	game_preferences_.hide(hide);
 	quit_game_.hide(hide);
 	apply_filter_.hide(hide);
@@ -860,9 +954,9 @@ void lobby::layout_children(const SDL_Rect& rect)
 
 	// Align in the middle between the right and left buttons
 	int space = (quit_game_.location().x - create_game_.location().x - create_game_.location().w
-	             - skip_replay_.location().w - game_preferences_.location().w - btn_space) / 2;
+	             - replay_options_.location().w - game_preferences_.location().w - btn_space) / 2;
 	if (space < btn_space) space = btn_space;
-	skip_replay_.set_location(create_game_.location().x + create_game_.location().w + space, yscale(yborder));
+	replay_options_.set_location(create_game_.location().x + create_game_.location().w + space, yscale(yborder));
 	game_preferences_.set_location(quit_game_.location().x - game_preferences_.location().w - space, yscale(yborder));
 
 	games_menu_.set_location(client_area().x, client_area().y + title().height());
@@ -902,7 +996,9 @@ void lobby::process_event()
 	const bool observe = (observe_game_.pressed() || (games_menu_.selected() && !games_menu_.selection_is_joinable())) && games_menu_.selection_is_observable();
 	const bool join = (join_game_.pressed() || games_menu_.selected()) && games_menu_.selection_is_joinable();
 	games_menu_.reset_selection();
-	preferences::set_skip_mp_replay(skip_replay_.checked());
+	preferences::set_skip_mp_replay(replay_options_.selected() == 1);
+	preferences::set_blindfold_replay(replay_options_.selected() == 2);
+
 	playmp_controller::set_replay_last_turn(0);
 	preferences::set_message_private(false);
 

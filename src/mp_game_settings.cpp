@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playlevel Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -28,7 +28,12 @@ mp_game_settings::mp_game_settings() :
 	hash(),
 	mp_era(),
 	mp_scenario(),
+	mp_scenario_name(),
+	mp_campaign(),
+	difficulty_define(),
 	active_mods(),
+	side_users(),
+	num_turns(0),
 	village_gold(0),
 	village_support(1),
 	xp_modifier(0),
@@ -58,7 +63,12 @@ mp_game_settings::mp_game_settings(const config& cfg) :
 	hash(),
 	mp_era(),
 	mp_scenario(),
+	mp_scenario_name(),
+	mp_campaign(),
+	difficulty_define(),
 	active_mods(),
+	side_users(),
+	num_turns(0),
 	village_gold(0),
 	village_support(1),
 	xp_modifier(0),
@@ -89,7 +99,12 @@ mp_game_settings::mp_game_settings(const mp_game_settings& settings)
 	, hash(settings.hash)
 	, mp_era(settings.mp_era)
 	, mp_scenario(settings.mp_scenario)
+	, mp_scenario_name(settings.mp_scenario_name)
+	, mp_campaign(settings.mp_campaign)
+	, difficulty_define(settings.difficulty_define)
 	, active_mods(settings.active_mods)
+	, side_users(settings.side_users)
+	, num_turns(settings.num_turns)
 	, village_gold(settings.village_gold)
 	, village_support(settings.village_support)
 	, xp_modifier(settings.xp_modifier)
@@ -122,9 +137,14 @@ void mp_game_settings::set_from_config(const config& game_cfg)
 	hash = cfg["hash"].str();
 	mp_era = cfg["mp_era"].str();
 	mp_scenario = cfg["mp_scenario"].str();
+	mp_scenario_name = cfg["scenario_name"].str();
+	mp_campaign = cfg["mp_campaign"].str();
+	difficulty_define = cfg["difficulty_define"].str();
 	active_mods = utils::split(cfg["active_mods"], ',');
+	side_users = utils::map_split(cfg["side_users"]);
 	xp_modifier = cfg["experience_modifier"];
 	use_map_settings = cfg["mp_use_map_settings"].to_bool();
+	random_start_time = cfg["mp_random_start_time"].to_bool();
 	fog_game = cfg["mp_fog"].to_bool();
 	shroud_game = cfg["mp_shroud"].to_bool();
 	mp_countdown = cfg["mp_countdown"].to_bool();
@@ -132,6 +152,7 @@ void mp_game_settings::set_from_config(const config& game_cfg)
 	mp_countdown_turn_bonus = cfg["mp_countdown_turn_bonus"];
 	mp_countdown_reservoir_time = cfg["mp_countdown_reservoir_time"];
 	mp_countdown_action_bonus = cfg["mp_countdown_action_bonus"];
+	num_turns = cfg["mp_num_turns"];
 	village_gold = cfg["mp_village_gold"];
 	village_support = cfg["mp_village_support"];
 	allow_observers = cfg["observer"].to_bool();
@@ -147,7 +168,12 @@ void mp_game_settings::reset()
 	hash = "";
 	mp_era = "";
 	mp_scenario = "";
+	mp_scenario_name = "";
+	mp_campaign = "";
+	difficulty_define = "";
 	active_mods.clear();
+	side_users.clear();
+	num_turns = 0;
 	village_gold = 0;
 	village_support = 1;
 	xp_modifier = 0;
@@ -170,18 +196,24 @@ config mp_game_settings::to_config() const
 	cfg["hash"] = hash;
 	cfg["mp_era"] = mp_era;
 	cfg["mp_scenario"] = mp_scenario;
+	cfg["mp_scenario_name"] = mp_scenario_name;
+	cfg["mp_campaign"] = mp_campaign;
+	cfg["difficulty_define"] = difficulty_define;
 	cfg["active_mods"] = utils::join(active_mods, ",");
+	cfg["side_users"] = utils::join_map(side_users);
 	cfg["experience_modifier"] = xp_modifier;
 	cfg["mp_countdown"] = mp_countdown;
 	cfg["mp_countdown_init_time"] = mp_countdown_init_time;
 	cfg["mp_countdown_turn_bonus"] = mp_countdown_turn_bonus;
 	cfg["mp_countdown_reservoir_time"] = mp_countdown_reservoir_time;
 	cfg["mp_countdown_action_bonus"] = mp_countdown_action_bonus;
+	cfg["mp_num_turns"] = num_turns;
 	cfg["mp_village_gold"] = village_gold;
 	cfg["mp_village_support"] = village_support;
 	cfg["mp_fog"] = fog_game;
 	cfg["mp_shroud"] = shroud_game;
 	cfg["mp_use_map_settings"] = use_map_settings;
+	cfg["mp_random_start_time"] = random_start_time;
 	cfg["observer"] = allow_observers;
 	cfg["shuffle_sides"] = shuffle_sides;
 	cfg["savegame"] = saved_game;

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -65,6 +65,8 @@ struct symbol_table
 //this table should be consulted whenever something is to be
 //displayed on screen.
 extern symbol_table string_table;
+
+bool& time_locale_correct();
 
 //function which, given the main configuration object, will return
 //a list of the translations of the game available.

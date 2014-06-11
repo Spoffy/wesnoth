@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by Jörg Hinrichs, refactored from various
+   Copyright (C) 2003 - 2014 by Jörg Hinrichs, refactored from various
    places formerly created by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -18,7 +18,10 @@
 
 #include "savegame.hpp"
 
+#include "save_index.hpp"
+#include "carryover.hpp"
 #include "dialogs.hpp" //FIXME: get rid of this as soon as the two remaining dialogs are moved to gui2
+#include "format_time_summary.hpp"
 #include "formula_string_utils.hpp"
 #include "game_display.hpp"
 #include "game_end_exceptions.hpp"
@@ -28,6 +31,7 @@
 #include "gui/dialogs/game_save.hpp"
 #include "gui/dialogs/message.hpp"
 #include "gui/dialogs/campaign_difficulty.hpp"
+#include "gui/dialogs/transient_message.hpp"
 #include "gui/widgets/settings.hpp"
 #include "gui/widgets/window.hpp"
 #include "log.hpp"
@@ -52,409 +56,15 @@ static lg::log_domain log_engine("engine");
 static lg::log_domain log_enginerefac("enginerefac");
 #define LOG_RG LOG_STREAM(info, log_enginerefac)
 
-#ifdef _WIN32
-	#ifdef INADDR_ANY
-		#undef INADDR_ANY
-	#endif
-	#ifdef INADDR_BROADCAST
-		#undef INADDR_BROADCAST
-	#endif
-	#ifdef INADDR_NONE
-		#undef INADDR_NONE
-	#endif
-
-	#include <windows.h>
-
-	/**
-	 * conv_ansi_utf8()
-	 *   - Convert a string between ANSI encoding (for Windows filename) and UTF-8
-	 *  string &name
-	 *     - filename to be converted
-	 *  bool a2u
-	 *     - if true, convert the string from ANSI to UTF-8.
-	 *     - if false, reverse. (convert it from UTF-8 to ANSI)
-	 */
-	void conv_ansi_utf8(std::string &name, bool a2u) {
-		int wlen = MultiByteToWideChar(a2u ? CP_ACP : CP_UTF8, 0,
-									   name.c_str(), -1, NULL, 0);
-		if (wlen == 0) return;
-		WCHAR *wc = new WCHAR[wlen];
-		if (wc == NULL) return;
-		if (MultiByteToWideChar(a2u ? CP_ACP : CP_UTF8, 0, name.c_str(), -1,
-								wc, wlen) == 0) {
-			delete [] wc;
-			return;
-		}
-		int alen = WideCharToMultiByte(!a2u ? CP_ACP : CP_UTF8, 0, wc, wlen,
-									   NULL, 0, NULL, NULL);
-		if (alen == 0) {
-			delete [] wc;
-			return;
-		}
-		CHAR *ac = new CHAR[alen];
-		if (ac == NULL) {
-			delete [] wc;
-			return;
-		}
-		WideCharToMultiByte(!a2u ? CP_ACP : CP_UTF8, 0, wc, wlen,
-							ac, alen, NULL, NULL);
-		delete [] wc;
-		if (ac == NULL) {
-			return;
-		}
-		name = ac;
-		delete [] ac;
-
-		return;
-	}
-
-	void replace_underbar2space(std::string &name) {
-		LOG_SAVE << "conv(A2U)-from:[" << name << "]" << std::endl;
-		conv_ansi_utf8(name, true);
-		LOG_SAVE << "conv(A2U)-to:[" << name << "]" << std::endl;
-		LOG_SAVE << "replace_underbar2space-from:[" << name << "]" << std::endl;
-		std::replace(name.begin(), name.end(), '_', ' ');
-		LOG_SAVE << "replace_underbar2space-to:[" << name << "]" << std::endl;
-	}
-
-	void replace_space2underbar(std::string &name) {
-		LOG_SAVE << "conv(U2A)-from:[" << name << "]" << std::endl;
-		conv_ansi_utf8(name, false);
-		LOG_SAVE << "conv(U2A)-to:[" << name << "]" << std::endl;
-		LOG_SAVE << "replace_space2underbar-from:[" << name << "]" << std::endl;
-		std::replace(name.begin(), name.end(), ' ', '_');
-		LOG_SAVE << "replace_space2underbar-to:[" << name << "]" << std::endl;
-	}
-#else /* ! _WIN32 */
-	void replace_underbar2space(std::string &name) {
-		std::replace(name.begin(),name.end(),'_',' ');
-	}
-	void replace_space2underbar(std::string &name) {
-		std::replace(name.begin(),name.end(),' ','_');
-	}
-#endif /* _WIN32 */
 
 namespace savegame {
 
-class save_index_class
-{
-public:
-	void rebuild(const std::string& name) {
-		std::string filename = name;
-		replace_space2underbar(filename);
-		time_t modified = file_create_time(get_saves_dir() + "/" + filename);
-		rebuild(name, modified);
-	}
-	void rebuild(const std::string& name, const time_t& modified) {
-		log_scope("load_summary_from_file");
-		config& summary = data(name);
-		try {
-			config full;
-			std::string dummy;
-			read_save_file(name, full, &dummy);
-			::extract_summary_from_config(full, summary);
-		} catch(game::load_game_failed&) {
-			summary["corrupt"] = true;
-		}
-		summary["mod_time"] = str_cast(static_cast<int>(modified));
-		write_save_index();
-	}
-	void remove(const std::string& name) {
-		config& root = data();
-		root.remove_attribute(name);
-		write_save_index();
-	}
-	void set_modified(const std::string& name, const time_t& modified) {
-		modified_[name] = modified;
-	}
-	config& get(const std::string& name) {
-		config& result = data(name);
-		time_t m = modified_[name];
-		config::attribute_value& mod_time = result["mod_time"];
-		if (mod_time.empty() || static_cast<time_t>(mod_time.to_int()) != m) {
-			rebuild(name, m);
-		}
-		return result;
-	}
-public:
-	void write_save_index() {
-		log_scope("write_save_index()");
-		try {
-			scoped_ostream stream = ostream_file(get_save_index_file());
-			if (preferences::compress_saves()) {
-			  write_gz(*stream, data());
-			} else {
-			  write(*stream, data());
-			}
-		} catch(io_exception& e) {
-			ERR_SAVE << "error writing to save index file: '" << e.what() << "'\n";
-		}
-	}
-
-public:
-	save_index_class()
-		: loaded_(false)
-		, data_()
-		, modified_()
-   {
-   }
-private:
-	config& data(const std::string& name) {
-		std::string save = name;
-		/*
-		 * All saves are .gz files now so make sure we use that name when opening
-		 * a file. If not some parts of the code use the name with and some parts
-		 * without the .gz suffix.
-		 */
-		if(save.length() < 3 || save.substr(save.length() - 3) != ".gz") {
-			save += ".gz";
-		}
-
-		config& cfg = data();
-		if (config& sv = cfg.find_child("save", "save", save)) {
-			return sv;
-		}
-
-		config& res = cfg.add_child("save");
-		res["save"] = save;
-		return res;
-	}
-	config& data() {
-		if(loaded_ == false) {
-			try {
-				scoped_istream stream = istream_file(get_save_index_file());
-				try {
-					read_gz(data_, *stream);
-				} catch (boost::iostreams::gzip_error&) {
-					stream->seekg(0);
-					read(data_, *stream);
-				}
-			} catch(io_exception& e) {
-				ERR_SAVE << "error reading save index: '" << e.what() << "'\n";
-			} catch(config::error&) {
-				ERR_SAVE << "error parsing save index config file\n";
-				data_.clear();
-			}
-			loaded_ = true;
-		}
-		return data_;
-	}
-private:
-	bool loaded_;
-	config data_;
-	std::map< std::string, time_t > modified_;
-} save_index_manager;
-
-class filename_filter {
-public:
-	filename_filter(const std::string& filter) : filter_(filter) {
-	}
-	bool operator()(const std::string& filename) const {
-		return filename.end() == std::search(filename.begin(), filename.end(),
-						     filter_.begin(), filter_.end());
-	}
-private:
-	std::string filter_;
-};
-
-class create_save_info {
-public:
-	create_save_info(const std::string* d = NULL) : dir(d ? *d : get_saves_dir()) {
-	}
-	save_info operator()(const std::string& filename) const {
-		std::string name = filename;
-		replace_underbar2space(name);
-		time_t modified = file_create_time(dir + "/" + filename);
-		save_index_manager.set_modified(name, modified);
-		return save_info(name, modified);
-	}
-	const std::string dir;
-};
-
-/** Get a list of available saves. */
-std::vector<save_info> get_saves_list(const std::string* dir, const std::string* filter)
-{
-	create_save_info creator(dir);
-
-	std::vector<std::string> filenames;
-	get_files_in_dir(creator.dir,&filenames);
-
-	if (filter) {
-		filenames.erase(std::remove_if(filenames.begin(), filenames.end(),
-                                               filename_filter(*filter)),
-                                filenames.end());
-	}
-
-	std::vector<save_info> result;
-	std::transform(filenames.begin(), filenames.end(),
-		       std::back_inserter(result), creator);
-	std::sort(result.begin(),result.end(),save_info_less_time());
-	return result;
-}
-
-
-const config& save_info::summary() const {
-	return save_index_manager.get(name());
-}
-
-std::string save_info::format_time_local() const
-{
-	char time_buf[256] = {0};
-	tm* tm_l = localtime(&modified());
-	if (tm_l) {
-		const size_t res = strftime(time_buf,sizeof(time_buf),
-			(preferences::use_twelve_hour_clock_format() ? _("%a %b %d %I:%M %p %Y") : _("%a %b %d %H:%M %Y")),
-			tm_l);
-		if(res == 0) {
-			time_buf[0] = 0;
-		}
-	} else {
-		LOG_SAVE << "localtime() returned null for time " << this->modified() << ", save " << name();
-	}
-
-	return time_buf;
-}
-
-std::string save_info::format_time_summary() const
-{
-	time_t t = modified();
-	time_t curtime = time(NULL);
-	const struct tm* timeptr = localtime(&curtime);
-	if(timeptr == NULL) {
-		return "";
-	}
-
-	const struct tm current_time = *timeptr;
-
-	timeptr = localtime(&t);
-	if(timeptr == NULL) {
-		return "";
-	}
-
-	const struct tm save_time = *timeptr;
-
-	const char* format_string = _("%b %d %y");
-
-	if(current_time.tm_year == save_time.tm_year) {
-		const int days_apart = current_time.tm_yday - save_time.tm_yday;
-		if(days_apart == 0) {
-			// save is from today
-			if(preferences::use_twelve_hour_clock_format() == false) {
-				format_string = _("%H:%M");
-			}
-			else {
-				format_string = _("%I:%M %p");
-			}
-		} else if(days_apart > 0 && days_apart <= current_time.tm_wday) {
-			// save is from this week
-			if(preferences::use_twelve_hour_clock_format() == false) {
-				format_string = _("%A, %H:%M");
-			}
-			else {
-				format_string = _("%A, %I:%M %p");
-			}
-		} else {
-			// save is from current year
-			format_string = _("%b %d");
-		}
-	} else {
-		// save is from a different year
-		format_string = _("%b %d %y");
-	}
-
-	char buf[40];
-	const size_t res = strftime(buf,sizeof(buf),format_string,&save_time);
-	if(res == 0) {
-		buf[0] = 0;
-	}
-
-	return buf;
-}
-
-bool save_info_less_time::operator() (const save_info& a, const save_info& b) const {
-	if (a.modified() > b.modified()) {
-		return true;
-	} else if (a.modified() < b.modified()) {
-		return false;
-		// Special funky case; for files created in the same second,
-		// a replay file sorts less than a non-replay file.  Prevents
-		// a timing-dependent bug where it may look like, at the end
-		// of a scenario, the replay and the autosave for the next
-		// scenario are displayed in the wrong order.
-	} else if (a.name().find(_(" replay"))==std::string::npos && b.name().find(_(" replay"))!=std::string::npos) {
-		return true;
-	} else if (a.name().find(_(" replay"))!=std::string::npos && b.name().find(_(" replay"))==std::string::npos) {
-		return false;
-	} else {
-		return  a.name() > b.name();
-	}
-}
-
-static std::istream* find_save_file(const std::string &name, const std::string &alt_name, const std::vector<std::string> &suffixes) {
-	BOOST_FOREACH(const std::string &suf, suffixes) {
-		std::istream *file_stream = istream_file(get_saves_dir() + "/" + name + suf);
-		if (file_stream->fail()) {
-			delete file_stream;
-			file_stream = istream_file(get_saves_dir() + "/" + alt_name + suf);
-		}
-		if (!file_stream->fail())
-			return file_stream;
-		else
-			delete file_stream;
-	}
-	LOG_SAVE << "Could not open supplied filename '" << name << "'\n";
-	throw game::load_game_failed();
-}
-
-void read_save_file(const std::string& name, config& cfg, std::string* error_log)
-{
-	std::string modified_name = name;
-	replace_space2underbar(modified_name);
-
-	static const std::vector<std::string> suffixes = boost::assign::list_of("")(".gz")(".bz2");
-	scoped_istream file_stream = find_save_file(modified_name, name, suffixes);
-
-	cfg.clear();
-	try{
-		/*
-		 * Test the modified name, since it might use a .gz
-		 * file even when not requested.
-		 */
-		if(is_gzip_file(modified_name)) {
-			read_gz(cfg, *file_stream);
-		} else if(is_bzip2_file(modified_name)) {
-			read_bz2(cfg, *file_stream);
-		} else {
-			read(cfg, *file_stream);
-		}
-	} catch(const std::ios_base::failure& e) {
-		LOG_SAVE << e.what();
-		if(error_log) {
-			*error_log += e.what();
-		}
-		throw game::load_game_failed();
-	} catch(const config::error &err) {
-		LOG_SAVE << err.message;
-		if(error_log) {
-			*error_log += err.message;
-		}
-		throw game::load_game_failed();
-	}
-
-	if(cfg.empty()) {
-		LOG_SAVE << "Could not parse file data into config\n";
-		throw game::load_game_failed();
-	}
-}
-
-bool save_game_exists(const std::string& name, bool compress_saves)
+bool save_game_exists(const std::string& name, compression::format compressed)
 {
 	std::string fname = name;
 	replace_space2underbar(fname);
 
-	if(compress_saves) {
-		fname += preferences::bzip2_savegame_compression() ? ".bz2" : ".gz";
-	}
+	fname += compression::format_extension(compressed);
 
 	return file_exists(get_saves_dir() + "/" + fname);
 }
@@ -472,34 +82,7 @@ void clean_saves(const std::string& label)
 	}
 }
 
-void remove_old_auto_saves(const int autosavemax, const int infinite_auto_saves)
-{
-	const std::string auto_save = _("Auto-Save");
-	int countdown = autosavemax;
-	if (countdown == infinite_auto_saves)
-		return;
-
-	std::vector<save_info> games = get_saves_list(NULL, &auto_save);
-	for (std::vector<save_info>::iterator i = games.begin(); i != games.end(); ++i) {
-		if (countdown-- <= 0) {
-			LOG_SAVE << "Deleting savegame '" << i->name() << "'\n";
-			delete_game(i->name());
-		}
-	}
-}
-
-void delete_game(const std::string& name)
-{
-	std::string modified_name = name;
-	replace_space2underbar(modified_name);
-
-	remove((get_saves_dir() + "/" + name).c_str());
-	remove((get_saves_dir() + "/" + modified_name).c_str());
-
-	save_index_manager.remove(name);
-}
-
-loadgame::loadgame(display& gui, const config& game_config, game_state& gamestate)
+loadgame::loadgame(display& gui, const config& game_config, saved_game& gamestate)
 	: game_config_(game_config)
 	, gui_(gui)
 	, gamestate_(gamestate)
@@ -625,7 +208,7 @@ void loadgame::load_game(
 		    gui2::show_error_message(gui_.video(),
 				    _("Warning: The file you have tried to load is corrupt. Loading anyway.\n") +
 				    error_log);
-        } catch (utils::invalid_utf8_exception&) {
+        } catch (utf8::invalid_utf8_exception&) {
 		    gui2::show_error_message(gui_.video(),
 				    _("Warning: The file you have tried to load is corrupt. Loading anyway.\n") +
                     std::string("(UTF-8 ERROR)"));
@@ -633,18 +216,22 @@ void loadgame::load_game(
 	}
 
 	if (!difficulty_.empty()){
-		if ( config & carryover = load_config_.child("carryover_sides_start") )
-			carryover["difficulty"] = difficulty_;
+		load_config_["difficulty"] = difficulty_;
 	}
 
 	gamestate_.classification().campaign_define = load_config_["campaign_define"].str();
-	gamestate_.classification().campaign_type = load_config_["campaign_type"].str();
+	gamestate_.classification().campaign_type = lexical_cast_default<game_classification::CAMPAIGN_TYPE> (load_config_["campaign_type"].str(), game_classification::SCENARIO);
 	gamestate_.classification().campaign_xtra_defines = utils::split(load_config_["campaign_extra_defines"]);
 	gamestate_.classification().version = load_config_["version"].str();
-	std::string load_config_difficulty =
-		load_config_.child("carryover_sides_start")["difficulty"];
-	gamestate_.classification().difficulty = load_config_difficulty;
-
+	gamestate_.classification().difficulty = load_config_["difficulty"].str();
+	/*
+	if (config & carryover_sides_start = load_config_.child("carryover_sides_start")) {
+		std::string load_config_difficulty = carryover_sides_start["difficulty"];
+		gamestate_.classification().difficulty = load_config_difficulty;
+	} else {
+		gamestate_.classification().difficulty = difficulty_;
+	}
+	*/
 	check_version_compatibility();
 
 }
@@ -657,6 +244,16 @@ void loadgame::check_version_compatibility()
 
 	const version_info save_version = gamestate_.classification().version;
 	const version_info &wesnoth_version = game_config::wesnoth_version;
+	// If the version isn't good, it probably isn't a compatible stable one,
+	// and the following comparisons would throw.
+	if (!save_version.good()) {
+		const std::string message = _("The save has corrupt version information ($version_number|) and cannot be loaded.");
+		utils::string_map symbols;
+		symbols["version_number"] = gamestate_.classification().version;
+		gui2::show_error_message(gui_.video(), utils::interpolate_variables_into_string(message, &symbols));
+		throw load_game_cancelled_exception();
+	}
+
 	// Even minor version numbers indicate stable releases which are
 	// compatible with each other.
 	if (wesnoth_version.minor_version() % 2 == 0 &&
@@ -696,7 +293,11 @@ void loadgame::check_version_compatibility()
 
 void loadgame::set_gamestate()
 {
-	gamestate_ = game_state(load_config_, show_replay_);
+	gamestate_ = saved_game(load_config_);
+#if 0
+	//we dont need this code since we always restore our random from [snapshot] or [replay_start] (execpt for start of scenario saves where we dont have those)
+	//also the random_seed isn't stored at toplevel anymore.
+
 
 	// Get the status of the random in the snapshot.
 	// For a replay we need to restore the start only, the replaying gets at
@@ -711,6 +312,7 @@ void loadgame::set_gamestate()
 	carryover_info sides(gamestate_.carryover_sides_start);
 	sides.rng().seed_random(seed, calls);
 	gamestate_.carryover_sides_start = sides.to_config();
+#endif
 }
 
 void loadgame::load_multiplayer_game()
@@ -728,7 +330,7 @@ void loadgame::load_multiplayer_game()
 		read_save_file(filename_, load_config_, &error_log);
 		copy_era(load_config_);
 
-		gamestate_ = game_state(load_config_);
+		gamestate_ = saved_game(load_config_);
 	}
 
 	if(!error_log.empty()) {
@@ -738,8 +340,8 @@ void loadgame::load_multiplayer_game()
 		throw load_game_cancelled_exception();
 	}
 
-	if(gamestate_.classification().campaign_type != "multiplayer") {
-		gui2::show_message(gui_.video(), "", _("This is not a multiplayer save"));
+	if(gamestate_.classification().campaign_type != game_classification::MULTIPLAYER) {
+		gui2::show_transient_error_message(gui_.video(), _("This is not a multiplayer save."));
 		throw load_game_cancelled_exception();
 	}
 
@@ -801,7 +403,7 @@ void loadgame::copy_era(config &cfg)
 	snapshot.add_child("era", era);
 }
 
-savegame::savegame(game_state& gamestate, const bool compress_saves, const std::string& title)
+savegame::savegame(saved_game& gamestate, const compression::format compress_saves, const std::string& title)
 	: gamestate_(gamestate)
 	, snapshot_()
 	, filename_()
@@ -928,7 +530,6 @@ void savegame::before_save()
 
 bool savegame::save_game(CVideo* video, const std::string& filename)
 {
-	static std::string parent, grandparent;
 
 	try {
 		Uint32 start, end;
@@ -939,36 +540,20 @@ bool savegame::save_game(CVideo* video, const std::string& filename)
 
 		before_save();
 
-		// The magic moment that does save threading; after
-		// each save, the filename of the save file becomes
-		// the parent for the next. *Unless* the parent file
-		// has the same name as the savefile, in which case we
-		// use the grandparent name. When user loads a savegame,
-		// we load its correct parent link along with it.
-		if (filename_ == parent) {
-			gamestate_.classification().parent = grandparent;
-		} else {
-			gamestate_.classification().parent = parent;
-		}
-		LOG_SAVE << "Setting parent of '" << filename_<< "' to " << gamestate_.classification().parent << "\n";
-
 		write_game_to_disk(filename_);
 		if (resources::persist != NULL) {
 			resources::persist->end_transaction();
 			resources::persist ->start_transaction();
 		}
 
-		grandparent = parent;
-		parent = filename_;
-
 		end = SDL_GetTicks();
-		LOG_SAVE << "Milliseconds to save " << filename_ << ": " << end - start << "\n";
+		LOG_SAVE << "Milliseconds to save " << filename_ << ": " << end - start << std::endl;
 
 		if (video != NULL && show_confirmation_)
-			gui2::show_message(*video, _("Saved"), _("The game has been saved"));
+			gui2::show_transient_message(*video, _("Saved"), _("The game has been saved."));
 		return true;
 	} catch(game::save_game_failed& e) {
-		ERR_SAVE << error_message_ << e.message;
+		ERR_SAVE << error_message_ << e.message << std::endl;
 		if (video != NULL){
 			gui2::show_error_message(*video, error_message_ + e.message);
 			//do not bother retrying, since the user can just try to save the game again
@@ -981,17 +566,14 @@ bool savegame::save_game(CVideo* video, const std::string& filename)
 
 void savegame::write_game_to_disk(const std::string& filename)
 {
-	LOG_SAVE << "savegame::save_game";
+	LOG_SAVE << "savegame::save_game" << std::endl;
 
 	filename_ = filename;
-
-	if (compress_saves_) {
-		filename_ += preferences::bzip2_savegame_compression() ? ".bz2" : ".gz";
-	}
+	filename_ += compression::format_extension(compress_saves_);
 
 	std::stringstream ss;
 	{
-		config_writer out(ss, compress_saves_ ? preferences::bzip2_savegame_compression() ? config_writer::BZIP2 : config_writer::GZIP : config_writer::NONE);
+		config_writer out(ss, compress_saves_);
 		write_game(out);
 		finish_save_game(out);
 	}
@@ -1041,7 +623,7 @@ scoped_ostream savegame::open_save_game(const std::string &label)
 	}
 }
 
-scenariostart_savegame::scenariostart_savegame(game_state &gamestate, const bool compress_saves)
+scenariostart_savegame::scenariostart_savegame(saved_game &gamestate, const compression::format compress_saves)
 	: savegame(gamestate, compress_saves)
 {
 	set_filename(gamestate.classification().label);
@@ -1053,7 +635,7 @@ void scenariostart_savegame::write_game(config_writer &out){
 	out.write_child("carryover_sides_start", gamestate().carryover_sides_start);
 }
 
-replay_savegame::replay_savegame(game_state &gamestate, const bool compress_saves)
+replay_savegame::replay_savegame(saved_game &gamestate, const compression::format compress_saves)
 	: savegame(gamestate, compress_saves, _("Save Replay"))
 {}
 
@@ -1077,8 +659,8 @@ void replay_savegame::write_game(config_writer &out) {
 	out.write_child("replay", gamestate().replay_data);
 }
 
-autosave_savegame::autosave_savegame(game_state &gamestate,
-					game_display& gui, const config& snapshot_cfg, const bool compress_saves)
+autosave_savegame::autosave_savegame(saved_game &gamestate,
+					game_display& gui, const config& snapshot_cfg, const compression::format compress_saves)
 	: ingame_savegame(gamestate, gui, snapshot_cfg, compress_saves)
 {
 	set_error_message(_("Could not auto save the game. Please save the game manually."));
@@ -1105,8 +687,8 @@ void autosave_savegame::create_filename()
 	set_filename(filename);
 }
 
-oos_savegame::oos_savegame(const config& snapshot_cfg)
-	: ingame_savegame(*resources::state_of_game, *resources::screen, snapshot_cfg, preferences::compress_saves())
+oos_savegame::oos_savegame(saved_game& gamestate, game_display& gui, const config& snapshot_cfg)
+	: ingame_savegame(gamestate, gui, snapshot_cfg, preferences::save_compression_format())
 {}
 
 int oos_savegame::show_save_dialog(CVideo& video, const std::string& message, const gui::DIALOG_TYPE /*dialog_type*/)
@@ -1128,8 +710,8 @@ int oos_savegame::show_save_dialog(CVideo& video, const std::string& message, co
 	return res;
 }
 
-ingame_savegame::ingame_savegame(game_state &gamestate,
-					game_display& gui, const config& snapshot_cfg, const bool compress_saves)
+ingame_savegame::ingame_savegame(saved_game &gamestate,
+					game_display& gui, const config& snapshot_cfg, const compression::format compress_saves)
 	: savegame(gamestate, compress_saves, _("Save Game")),
 	gui_(gui)
 {
@@ -1146,11 +728,6 @@ void ingame_savegame::create_filename()
 	set_filename(stream.str());
 }
 
-void ingame_savegame::before_save()
-{
-	savegame::before_save();
-	gamestate().write_snapshot(snapshot(), &gui_);
-}
 
 void ingame_savegame::write_game(config_writer &out) {
 	log_scope("write_game");

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playturn Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -21,7 +21,7 @@
 #include "floating_textbox.hpp"
 #include "unit_map.hpp"
 
-class game_state;
+class game_board;
 class gamemap;
 
 namespace events {
@@ -34,9 +34,9 @@ namespace events {
 
 class menu_handler : private chat_handler {
 public:
-	menu_handler(game_display* gui, unit_map& units, std::vector<team>& teams,
-		const config& level, const gamemap& map,
-		const config& game_config, game_state& gamestate);
+	menu_handler(game_display* gui, game_board & board,
+		const config& level,
+		const config& game_config);
 	virtual ~menu_handler();
 
 	gui::floating_textbox& get_textbox();
@@ -63,9 +63,9 @@ public:
 	bool end_turn(int side_num);
 	void goto_leader(int side_num);
 	void unit_description();
+	void terrain_description(mouse_handler& mousehandler);
 	void rename_unit();
 	void create_unit(mouse_handler& mousehandler);
-	void create_unit_2(mouse_handler& mousehandler); // TODO: replace create_unit when complete
 	void change_side(mouse_handler& mousehandler);
 	void kill_unit(mouse_handler& mousehandler);
 	void label_terrain(mouse_handler& mousehandler, bool team_only);
@@ -118,7 +118,6 @@ private:
 	const config& level_;
 	const gamemap& map_;
 	const config& game_config_;
-	game_state& gamestate_;
 
 	gui::floating_textbox textbox_info_;
 	std::string last_search_;

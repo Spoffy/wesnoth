@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -160,6 +160,9 @@ public:
 	void move_selection_keeping_viewport(size_t id);
 	void reset_selection();
 
+	const item& get_item(int index) const;
+	const item& get_selected_item() const;
+
 	// allows user to change_item while running (dangerous)
 	void change_item(int pos1,int pos2,const std::string& str);
 
@@ -195,8 +198,8 @@ public:
 	//this should be changed to a more object-oriented approach
 	void set_sorter(sorter *s);
 	void sort_by(int column);
-	int get_sort_by() {return sortby_;};
-	bool get_sort_reversed() {return sortreversed_;};
+	int get_sort_by() {return sortby_;}
+	bool get_sort_reversed() {return sortreversed_;}
 
 protected:
 	bool item_ends_with_image(const std::string& item) const;

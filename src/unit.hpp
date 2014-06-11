@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -28,7 +28,6 @@
 #include "unit_map.hpp"
 
 class display;
-class game_state;
 class vconfig;
 class team;
 
@@ -80,10 +79,18 @@ public:
 	 */
 	static void clear_status_caches();
 
+	/** The path to the leader crown overlay. */
+	static const std::string& leader_crown();
+
 	// Copy constructor
 	unit(const unit& u);
+
 	/** Initializes a unit from a config */
-	unit(const config& cfg, bool use_traits = false, game_state *state = NULL, const vconfig* vcfg = NULL);
+	explicit unit(
+			  const config& cfg
+			, bool use_traits = false
+			, const vconfig* vcfg = NULL);
+
 	/**
 	  * Initializes a unit from a unit type
 	  * only real_unit may have random traits, name and gender
@@ -140,7 +147,9 @@ public:
 	int experience() const { return experience_; }
 	int max_experience() const { return max_experience_; }
 	void set_experience(int xp) { experience_ = xp; }
+	void set_recall_cost(int recall_cost) { recall_cost_ = recall_cost; }
 	int level() const { return level_; }
+	int recall_cost() const { return recall_cost_; }
 	void remove_movement_ai();
 	void remove_attacks_ai();
 
@@ -195,7 +204,7 @@ public:
 	void end_turn();
 	void new_scenario();
 	/** Called on every draw */
-	void refresh();
+	void refresh() const;
 
 	bool take_hit(int damage) { hit_points_ -= damage; return hit_points_ <= 0; }
 	void heal(int amount);
@@ -219,6 +228,11 @@ public:
 	bool matches_id(const std::string& unit_id) const;
 	/* cfg: standard unit filter */
 	bool matches_filter(const vconfig& cfg,const map_location& loc,bool use_flat_tod=false) const;
+	/// Determine if *this matches @a filter at its current location.
+	/// (Only use for units currently on the map; otherwise use the overload
+	/// that takes a location, possibly with a null location.)
+	bool matches_filter(const vconfig& filter, bool use_flat_tod=false) const
+	{ return matches_filter(filter, get_location(), use_flat_tod); }
 	const std::vector<std::string>& overlays() const { return overlays_; }
 
 	void write(config& cfg) const;
@@ -235,23 +249,22 @@ public:
 	const surface still_image(bool scaled = false) const;
 
 	/** draw a unit.  */
-	void redraw_unit();
+	void redraw_unit() const;
 	/** Clear unit_halo_  */
-	void clear_haloes();
+	void clear_haloes() const;
 
-	void set_standing(bool with_bars = true);
+	void set_standing(bool with_bars = true) const;
 
-	void set_ghosted(bool with_bars = true);
-	void set_disabled_ghosted(bool with_bars = true);
+	void set_ghosted(bool with_bars = true) const;
+	void set_disabled_ghosted(bool with_bars = true) const;
 
-	void set_idling();
-	void set_selecting();
-	unit_animation* get_animation() {  return anim_.get();};
-	const unit_animation* get_animation() const {  return anim_.get();};
-	void set_facing(map_location::DIRECTION dir);
+	void set_idling() const;
+	void set_selecting() const;
+	unit_animation* get_animation() const {  return anim_.get();}
+	void set_facing(map_location::DIRECTION dir) const;
 	map_location::DIRECTION facing() const { return facing_; }
 
-	bool invalidate(const map_location &loc);
+	bool invalidate(const display & disp) const;
 	const std::vector<t_string>& trait_names() const { return trait_names_; }
 	const std::vector<t_string>& trait_descriptions() const { return trait_descriptions_; }
 	std::vector<std::string> get_traits_list() const;
@@ -268,7 +281,7 @@ public:
 	int upkeep() const;
 	bool loyal() const;
 
-	void set_hidden(bool state);
+	void set_hidden(bool state) const;
 	bool get_hidden() const { return hidden_; }
 	bool is_flying() const { return movement_type_.is_flying(); }
 	bool is_fearless() const { return is_fearless_; }
@@ -313,9 +326,9 @@ public:
 		STATE_STANDING,   /** anim must fit in a hex */
 		STATE_FORGET,     /** animation will be automatically replaced by a standing anim when finished */
 		STATE_ANIM};      /** normal anims */
-	void start_animation(int start_time, const unit_animation *animation,
+	void start_animation (int start_time, const unit_animation *animation,
 		bool with_bars,  const std::string &text = "",
-		Uint32 text_color = 0, STATE state = STATE_ANIM);
+		Uint32 text_color = 0, STATE state = STATE_ANIM) const;
 
 	/** The name of the file to game_display (used in menus). */
 	std::string absolute_image() const;
@@ -333,7 +346,7 @@ public:
 
 	const unit_animation* choose_animation(const display& disp,
 		       	const map_location& loc, const std::string& event,
-		       	const map_location& second_loc = map_location::null_location,
+		       	const map_location& second_loc = map_location::null_location(),
 			const int damage=0,
 			const unit_animation::hit_type hit_type = unit_animation::INVALID,
 			const attack_type* attack=NULL,const attack_type* second_attack = NULL,
@@ -370,12 +383,12 @@ public:
 	void backup_state();
 	void apply_modifications();
 	void generate_traits(bool musthaveonly=false);
-	void generate_name(rand_rng::simple_rng *rng = 0);
+	void generate_name();
 
 	// Only see_all=true use caching
 	bool invisible(const map_location& loc, bool see_all=true) const;
 
-	bool is_visible_to_team(team const& team, bool const see_all = true, gamemap const& map = *resources::game_map) const;
+	bool is_visible_to_team(team const& team, gamemap const & map , bool const see_all = true) const;
 
 	/** Mark this unit as clone so it can be inserted to unit_map
 	 * @returns                   self (for convenience)
@@ -438,6 +451,7 @@ private:
 	int experience_;
 	int max_experience_;
 	int level_;
+	int recall_cost_;
 	bool canrecruit_;
 	std::vector<std::string> recruit_list_;
 	unit_type::ALIGNMENT alignment_;
@@ -473,14 +487,15 @@ private:
 	config events_;
 	config filter_recall_;
 	bool emit_zoc_;
-	STATE state_;
+
+	mutable STATE state_; //animation state
 
 	std::vector<std::string> overlays_;
 
 	std::string role_;
 	std::vector<attack_type> attacks_;
-	map_location::DIRECTION facing_;
-
+	mutable map_location::DIRECTION facing_; //TODO: I think we actually consider this to be part of the gamestate, so it might be better if it's not mutable
+						 //But it's not easy to separate this guy from the animation code right now.
 	std::vector<t_string> trait_names_;
 	std::vector<t_string> trait_descriptions_;
 
@@ -493,20 +508,24 @@ private:
 	// Animations:
 	std::vector<unit_animation> animations_;
 
-	boost::scoped_ptr<unit_animation> anim_;
-	int next_idling_;
-	int frame_begin_time_;
+	mutable boost::scoped_ptr<unit_animation> anim_;
+	mutable int next_idling_;      // used for animation
+	mutable int frame_begin_time_; // used for animation
 
 
-	int unit_halo_;
+	mutable int unit_halo_; // flag used for drawing / animation
 	bool getsHit_;
-	bool refreshing_; // avoid infinite recursion
-	bool hidden_;
-	bool draw_bars_;
+	mutable bool refreshing_; // avoid infinite recursion. flag used for drawing / animation
+	mutable bool hidden_;
+	mutable bool draw_bars_; // flag used for drawing / animation
+	double hp_bar_scaling_, xp_bar_scaling_;
 
 	config modifications_;
 
-	/** Hold the visibility status cache for a unit, mutable since it's a cache. */
+	/**
+	 * Hold the visibility status cache for a unit, when not uncovered.
+	 * This is mutable since it is a cache.
+	 */
 	mutable std::map<map_location, bool> invisibility_cache_;
 
 	/**
@@ -558,12 +577,6 @@ int side_units_cost(int side_num);
 
 int side_upkeep(int side_num);
 
-unit_map::iterator find_visible_unit(const map_location &loc,
-	const team &current_team, bool see_all = false);
-
-unit *get_visible_unit(const map_location &loc,
-	const team &current_team, bool see_all = false);
-
 struct team_data
 {
 	team_data() :
@@ -582,61 +595,6 @@ struct team_data
 };
 
 team_data calculate_team_data(const class team& tm, int side);
-
-/**
- * This object is used to temporary place a unit in the unit map, swapping out
- * any unit that is already there.  On destruction, it restores the unit map to
- * its original.
- */
-struct temporary_unit_placer
-{
-	temporary_unit_placer(unit_map& m, const map_location& loc, unit& u);
-	virtual  ~temporary_unit_placer();
-
-private:
-	unit_map& m_;
-	const map_location loc_;
-	unit *temp_;
-};
-
-/**
- * This object is used to temporary remove a unit from the unit map.
- * On destruction, it restores the unit map to its original.
- * unit_map iterators to this unit must not be accessed while the unit is temporarily
- * removed, otherwise a collision will happen when trying to reinsert the unit.
- */
-struct temporary_unit_remover
-{
-	temporary_unit_remover(unit_map& m, const map_location& loc);
-	virtual  ~temporary_unit_remover();
-
-private:
-	unit_map& m_;
-	const map_location loc_;
-	unit *temp_;
-};
-
-
-/**
- * This object is used to temporary move a unit in the unit map, swapping out
- * any unit that is already there.  On destruction, it restores the unit map to
- * its original.
- */
-struct temporary_unit_mover
-{
-	temporary_unit_mover(unit_map& m, const map_location& src,
-	                     const map_location& dst, int new_moves);
-	temporary_unit_mover(unit_map& m, const map_location& src,
-	                     const map_location& dst);
-	virtual  ~temporary_unit_mover();
-
-private:
-	unit_map& m_;
-	const map_location src_;
-	const map_location dst_;
-	int old_moves_;
-	unit *temp_;
-};
 
 /**
  * Gets a checksum for a unit.

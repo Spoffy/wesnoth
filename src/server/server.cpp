@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -31,6 +31,7 @@
 #include "../serialization/parser.hpp"
 #include "../serialization/preprocessor.hpp"
 #include "../serialization/string_utils.hpp"
+#include "../serialization/unicode.hpp"
 #include "../util.hpp"
 
 #include "game.hpp"
@@ -709,7 +710,7 @@ void server::run() {
 						if (i != players_.end()) {
 							DBG_SERVER << "Pinging " << i->second.name() << "(" << i->first << ").\n";
 						} else {
-							ERR_SERVER << "Player " << sock << " is in ghost_players_ but not in players_.\n";
+							ERR_SERVER << "Player " << sock << " is in ghost_players_ but not in players_." << std::endl;
 						}
 					}
 					network::send_raw_data(s.begin(), s.size(), sock, "ping") ;
@@ -755,7 +756,7 @@ void server::run() {
 				metrics_.service_request();
 
 				if(buf.empty()) {
-					WRN_SERVER << "received empty packet\n";
+					WRN_SERVER << "received empty packet" << std::endl;
 					continue;
 				}
 
@@ -801,7 +802,7 @@ void server::run() {
 			metrics_.no_requests();
 
 		} catch(simple_wml::error& e) {
-			WRN_CONFIG << "Warning: error in received data: " << e.message << "\n";
+			WRN_CONFIG << "Warning: error in received data: " << e.message << std::endl;
 		} catch(network::error& e) {
 			if (e.message == "shut down") {
 				LOG_SERVER << "Try to disconnect all users...\n";
@@ -814,7 +815,7 @@ void server::run() {
 				break;
 			}
 			if (!e.socket) {
-				ERR_SERVER << "network error: " << e.message << "\n";
+				ERR_SERVER << "network error: " << e.message << std::endl;
 				continue;
 			}
 			DBG_SERVER << "socket closed: " << e.message << "\n";
@@ -834,7 +835,7 @@ void server::run() {
 					DBG_SERVER << ip << "\tNot logged in user disconnected.\n";
 					not_logged_in_.erase(i);
 				} else {
-					WRN_SERVER << ip << "\tWarning: User disconnected right after the connection was accepted.\n";
+					WRN_SERVER << ip << "\tWarning: User disconnected right after the connection was accepted." << std::endl;
 				}
 				e.disconnect();
 				DBG_SERVER << "done closing socket...\n";
@@ -901,7 +902,7 @@ void server::run() {
 		// all user_handler exceptions are caught correctly
 		// this can removed.
 		} catch (user_handler::error& e) {
-			ERR_SERVER << "Uncaught user_handler exception: " << e.message << "\n";
+			ERR_SERVER << "Uncaught user_handler exception: " << e.message << std::endl;
 		}
 	}
 }
@@ -1018,7 +1019,7 @@ void server::process_login(const network::connection sock,
 
 		if (accepted_versions_.empty()) {
 			// This cannot happen with the current way accepted_versions_ is populated
-			ERR_SERVER << "ERROR: This server doesn't accept any versions at all.\n";
+			ERR_SERVER << "ERROR: This server doesn't accept any versions at all." << std::endl;
 		}
 		network::send_data(response, sock, "error");
 		return;
@@ -1048,8 +1049,8 @@ void server::process_login(const network::connection sock,
 	for (std::vector<std::string>::const_iterator d_it = disallowed_names_.begin();
 		d_it != disallowed_names_.end(); ++d_it)
 	{
-		if (utils::wildcard_string_match(utils::lowercase(username),
-			utils::lowercase(*d_it)))
+		if (utils::wildcard_string_match(utf8::lowercase(username),
+			utf8::lowercase(*d_it)))
 		{
 			send_error(sock, "The nickname '" + username + "' is reserved and cannot be used by players",
 				MP_NAME_RESERVED_ERROR);
@@ -1268,7 +1269,7 @@ void server::process_query(const network::connection sock,
                            simple_wml::node& query) {
 	const wesnothd::player_map::iterator pl = players_.find(sock);
 	if (pl == players_.end()) {
-		DBG_SERVER << "ERROR: process_query(): Could not find player with socket: " << sock << "\n";
+		DBG_SERVER << "ERROR: process_query(): Could not find player with socket: " << sock << std::endl;
 		return;
 	}
 	const std::string command(query["type"].to_string());
@@ -1348,7 +1349,7 @@ void server::start_new_server() {
 	// restart_command="./wesnothd-debug -d -c ~/.wesnoth1.5/server.cfg"
 	// remember to make new one as a daemon or it will block old one
 	if (std::system(restart_command.c_str())) {
-		ERR_SERVER << "Failed to start new server with command: " << restart_command << "\n";
+		ERR_SERVER << "Failed to start new server with command: " << restart_command << std::endl;
 	} else {
 		LOG_SERVER << "New server started with command: " << restart_command << "\n";
 	}
@@ -1372,7 +1373,7 @@ std::string server::process_command(std::string query, std::string issuer_name) 
 	}
 
 	const std::string::iterator i = std::find(query.begin(), query.end(), ' ');
-	const std::string command = utils::lowercase(std::string(query.begin(), i));
+	const std::string command = utf8::lowercase(std::string(query.begin(), i));
 	std::string parameters = (i == query.end() ? "" : std::string(i + 1, query.end()));
 	utils::strip(parameters);
 
@@ -1489,7 +1490,7 @@ void server::netstats_handler(const std::string& /*issuer_name*/, const std::str
 		<< stats.npending_sends << "\nBytes in buffers: "
 		<< stats.nbytes_pending_sends << "\n";
 
-	if (utils::lowercase(parameters) == "all") {
+	if (utf8::lowercase(parameters) == "all") {
 		*out << network::get_bandwidth_stats_all();
 	} else {
 		*out << network::get_bandwidth_stats(); // stats from previuos hour
@@ -1663,9 +1664,9 @@ void server::bans_handler(const std::string& /*issuer_name*/, const std::string&
 
 	if (parameters.empty()) {
 		ban_manager_.list_bans(*out);
-	} else if (utils::lowercase(parameters) == "deleted") {
+	} else if (utf8::lowercase(parameters) == "deleted") {
 		ban_manager_.list_deleted_bans(*out);
-	} else if (utils::lowercase(parameters).find("deleted") == 0) {
+	} else if (utf8::lowercase(parameters).find("deleted") == 0) {
 		std::string mask = parameters.substr(7);
 		ban_manager_.list_deleted_bans(*out, utils::strip(mask));
 	} else {
@@ -2007,7 +2008,7 @@ void server::dul_handler(const std::string& /*issuer_name*/, const std::string& 
 	if (parameters == "") {
 		*out << "Unregistered login is " << (deny_unregistered_login_ ? "disallowed" : "allowed") << ".";
 	} else {
-		deny_unregistered_login_ = (utils::lowercase(parameters) == "yes");
+		deny_unregistered_login_ = (utf8::lowercase(parameters) == "yes");
 		*out << "Unregistered login is now " << (deny_unregistered_login_ ? "disallowed" : "allowed") << ".";
 	}
 }
@@ -2015,7 +2016,7 @@ void server::dul_handler(const std::string& /*issuer_name*/, const std::string& 
 void server::process_nickserv(const network::connection sock, simple_wml::node& data) {
 	const wesnothd::player_map::iterator pl = players_.find(sock);
 	if (pl == players_.end()) {
-		DBG_SERVER << "ERROR: Could not find player with socket: " << sock << "\n";
+		DBG_SERVER << "ERROR: Could not find player with socket: " << sock << std::endl;
 		return;
 	}
 
@@ -2427,6 +2428,10 @@ void server::process_data_game(const network::connection sock,
 			}
 		}
 
+		if (data.attr("require_scenario").to_bool(false)) {
+			desc.set_attr("require_scenario", "yes");
+		}
+
 		const simple_wml::node::child_list& mlist = data.children("modification");
 		BOOST_FOREACH (const simple_wml::node* m, mlist) {
 			desc.add_child_at("modification", 0);
@@ -2508,26 +2513,27 @@ void server::process_data_game(const network::connection sock,
 		// If there is no shroud, then tell players in the lobby
 		// what the map looks like.
 		const simple_wml::node& s = g->level().root();
-		if (s["mp_shroud"].to_bool()) {
-			desc.set_attr_dup("map_data", s["map_data"]);
-		} else {
-			desc.set_attr("map_data", "");
-		}
+		desc.set_attr_dup("map_data", s["mp_shroud"].to_bool() ? "" :
+			s["map_data"]);
 		if (const simple_wml::node* e = data.child("era")) {
 			if (!e->attr("require_era").to_bool(true)) {
 				desc.set_attr("require_era", "no");
 			}
 		}
+
+		if (data.attr("require_scenario").to_bool(false)) {
+			desc.set_attr("require_scenario", "yes");
+		}
+
+		// Tell everyone that the next scenario data is available.
+		static simple_wml::document notify_next_scenario(
+			"[notify_next_scenario]\n[/notify_next_scenario]\n",
+			simple_wml::INIT_COMPRESSED);
+		g->send_data(notify_next_scenario, sock);
+
 		// Send the update of the game description to the lobby.
 		update_game_in_lobby(g);
 
-		g->start_game(pl);
-		return;
-	// If a player advances to the next scenario of a mp campaign. (deprecated)
-	///@deprecated r22619 a player advances to the next scenario of a mp campaign (notify_next_scenario)
-	} else if(data.child("notify_next_scenario")) {
-		//g->send_data(g->construct_server_message(pl->second.name()
-		//		+ " advanced to the next scenario."), sock);
 		return;
 	// A mp client sends a request for the next scenario of a mp campaign.
 	} else if (data.child("load_next_scenario")) {
@@ -2535,6 +2541,8 @@ void server::process_data_game(const network::connection sock,
 		return;
 	} else if (data.child("start_game")) {
 		if (!g->is_owner(sock)) return;
+		//perform controller tweaks, assigning sides as human for their owners etc.
+		g->perform_controller_tweaks();
 		// Send notification of the game starting immediately.
 		// g->start_game() will send data that assumes
 		// the [start_game] message has been sent
@@ -2542,6 +2550,10 @@ void server::process_data_game(const network::connection sock,
 		g->start_game(pl);
 
 		//update the game having changed in the lobby
+		update_game_in_lobby(g);
+		return;
+	} else if (data.child("update_game")) {
+		g->update_game();
 		update_game_in_lobby(g);
 		return;
 	} else if (data.child("leave_game")) {
@@ -2593,7 +2605,6 @@ void server::process_data_game(const network::connection sock,
 		if (g->describe_slots()) {
 			update_game_in_lobby(g);
 		}
-		// FIXME: Why not save it in the history_? (if successful)
 		return;
 	// If all observers should be muted. (toggles)
 	} else if (data.child("muteall")) {
@@ -2662,6 +2673,9 @@ void server::process_data_game(const network::connection sock,
 		return;
 	} else if (data.child("whiteboard")) {
 		g->process_whiteboard(data,pl);
+		return;
+	} else if (data.child("require_random")) {
+		g->require_random(data,pl);
 		return;
 	} else if (data.child("message")) {
 		g->process_message(data, pl);
@@ -2771,7 +2785,7 @@ int main(int argc, char** argv) {
 	game_config::path = get_cwd();
 
 	// show 'info' by default
-	lg::set_log_domain_severity("server", 2);
+	lg::set_log_domain_severity("server", lg::info);
 	lg::timestamps(true);
 
 	for (int arg = 1; arg != argc; ++arg) {
@@ -2783,7 +2797,7 @@ int main(int argc, char** argv) {
 		if ((val == "--config" || val == "-c") && arg+1 != argc) {
 			config_file = argv[++arg];
 		} else if (val == "--verbose" || val == "-v") {
-			lg::set_log_domain_severity("all", 3);
+			lg::set_log_domain_severity("all", lg::debug);
 		} else if (val.substr(0, 6) == "--log-") {
 			size_t p = val.find('=');
 			if (p == std::string::npos) {
@@ -2792,10 +2806,10 @@ int main(int argc, char** argv) {
 			}
 			std::string s = val.substr(6, p - 6);
 			int severity;
-			if (s == "error") severity = 0;
-			else if (s == "warning") severity = 1;
-			else if (s == "info") severity = 2;
-			else if (s == "debug") severity = 3;
+			if (s == "error") severity = lg::err.get_severity();
+			else if (s == "warning") severity = lg::warn.get_severity();
+			else if (s == "info") severity = lg::info.get_severity();
+			else if (s == "debug") severity = lg::debug.get_severity();
 			else {
 				std::cerr << "unknown debug level: " << s << '\n';
 				return 2;
@@ -2832,12 +2846,12 @@ int main(int argc, char** argv) {
 			return 0;
 		} else if (val == "--daemon" || val == "-d") {
 #ifdef _WIN32
-			ERR_SERVER << "Running as a daemon is not supported on this platform\n";
+			ERR_SERVER << "Running as a daemon is not supported on this platform" << std::endl;
 			return -1;
 #else
 			const pid_t pid = fork();
 			if (pid < 0) {
-				ERR_SERVER << "Could not fork and run as a daemon\n";
+				ERR_SERVER << "Could not fork and run as a daemon" << std::endl;
 				return -1;
 			} else if (pid > 0) {
 				std::cout << "Started wesnothd as a daemon with process id "
@@ -2857,7 +2871,7 @@ int main(int argc, char** argv) {
 		} else if(val == "--request_sample_frequency" && arg+1 != argc) {
 			request_sample_frequency = atoi(argv[++arg]);
 		} else {
-			ERR_SERVER << "unknown option: " << val << "\n";
+			ERR_SERVER << "unknown option: " << val << std::endl;
 			return 2;
 		}
 	}

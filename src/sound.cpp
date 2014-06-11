@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -30,6 +30,7 @@
 #include <list>
 
 static lg::log_domain log_audio("audio");
+#define DBG_AUDIO LOG_STREAM(debug, log_audio)
 #define LOG_AUDIO LOG_STREAM(info, log_audio)
 #define ERR_AUDIO LOG_STREAM(err, log_audio)
 
@@ -56,14 +57,14 @@ int fadingout_time=5000;
 bool no_fading = false;
 
 // number of allocated channels,
-const size_t n_of_channels = 16;
+const size_t n_of_channels = 32;
 
 // we need 2 channels, because we it for timer as well
 const size_t bell_channel = 0;
 const size_t timer_channel = 1;
 
 // number of channels reserved for sound sources
-const size_t source_channels = n_of_channels - 8;
+const size_t source_channels = 8;
 const size_t source_channel_start = timer_channel + 1;
 const size_t source_channel_last = source_channel_start + source_channels - 1;
 const size_t UI_sound_channel = source_channel_last + 1;
@@ -302,7 +303,7 @@ bool init_sound() {
 	if(!mix_ok) {
 		if(Mix_OpenAudio(preferences::sample_rate(), MIX_DEFAULT_FORMAT, 2, preferences::sound_buffer_size()) == -1) {
 			mix_ok = false;
-			ERR_AUDIO << "Could not initialize audio: " << Mix_GetError() << "\n";
+			ERR_AUDIO << "Could not initialize audio: " << Mix_GetError() << std::endl;
 			return false;
 		}
 
@@ -329,6 +330,13 @@ bool init_sound() {
 
 		LOG_AUDIO << "Audio initialized.\n";
 
+		DBG_AUDIO << "Channel layout: " << n_of_channels << " channels (" << n_reserved_channels << " reserved)\n"
+				  << "    " << bell_channel << " - bell\n"
+				  << "    " << timer_channel << " - timer\n"
+				  << "    " << source_channel_start << ".." << source_channel_last << " - sound sources\n"
+				  << "    " << UI_sound_channel << " - UI\n"
+				  << "    " << UI_sound_channel + 1 << ".." << n_of_channels - 1 << " - sound effects\n";
+
 		play_music();
 	}
 	return true;
@@ -348,7 +356,7 @@ void close_sound() {
 
 		int numtimesopened = Mix_QuerySpec(&frequency, &format, &channels);
 		if(numtimesopened == 0) {
-			ERR_AUDIO << "Error closing audio device: " << Mix_GetError() << "\n";
+			ERR_AUDIO << "Error closing audio device: " << Mix_GetError() << std::endl;
 		}
 		while (numtimesopened) {
 			Mix_CloseAudio();
@@ -370,7 +378,7 @@ void reset_sound() {
 	if (music || sound || bell || UI_sound) {
 		sound::close_sound();
 		if (!sound::init_sound()) {
-			ERR_AUDIO << "Error initializing audio device: " << Mix_GetError() << "\n";
+			ERR_AUDIO << "Error initializing audio device: " << Mix_GetError() << std::endl;
 		}
 		if (!music)
 			sound::stop_music();
@@ -499,7 +507,7 @@ static void play_new_music()
 	const int res = Mix_FadeInMusic(itor->second, 1, fading_time);
 	if(res < 0)
 	{
-		ERR_AUDIO << "Could not play music: " << Mix_GetError() << " " << filename <<" \n";
+		ERR_AUDIO << "Could not play music: " << Mix_GetError() << " " << filename <<" " << std::endl;
 	}
 
 	want_new_music=false;
@@ -524,6 +532,10 @@ void play_music_repeatedly(const std::string &id)
 void play_music_config(const config &music_node)
 {
 	music_track track( music_node );
+
+	if (!track.valid() && !track.id().empty()) {
+		ERR_AUDIO << "cannot open track '" << track.id() << "'; disabled in this playlist." << std::endl;
+	}
 
 	// If they say play once, we don't alter playlist.
 	if (track.play_once()) {
@@ -550,11 +562,8 @@ void play_music_config(const config &music_node)
 		if(itor == current_track_list.end()) {
 			current_track_list.push_back(track);
 		} else {
-			ERR_AUDIO << "tried to add duplicate track '" << track.file_path() << "'\n";
+			ERR_AUDIO << "tried to add duplicate track '" << track.file_path() << "'" << std::endl;
 		}
-	}
-	else if(track.id().empty() == false) {
-		ERR_AUDIO << "cannot open track '" << track.id() << "'; disabled in this playlist.\n";
 	}
 
 	// They can tell us to start playing this list immediately.
@@ -627,7 +636,17 @@ void reposition_sound(int id, unsigned int distance)
 	{
 		if (channel_ids[ch] != id) continue;
 		if (distance >= DISTANCE_SILENT) {
-			Mix_FadeOutChannel(ch, 100);
+			// Don't call Mix_FadeOutChannel if the channel's volume is set to
+			// zero. It doesn't do anything in that case and the channel will
+			// resume playing as soon as its volume is reset to a non-zero
+			// value, which results in issues like sound sources deleted while
+			// their volume is zero coming back to life and escaping Wesnoth's
+			// sound source management code.
+			if (Mix_Volume(ch, -1) == 0) {
+				Mix_HaltChannel(ch);
+			} else {
+				Mix_FadeOutChannel(ch, 100);
+			}
 		} else {
 			Mix_SetDistance(ch, distance);
 		}
@@ -692,7 +711,7 @@ static Mix_Chunk* load_chunk(const std::string& file, channel_group group)
 		if (!filename.empty()) {
 			temp_chunk.set_data(Mix_LoadWAV(filename.c_str()));
 		} else {
-			ERR_AUDIO << "Could not load sound file '" << file << "'.\n";
+			ERR_AUDIO << "Could not load sound file '" << file << "'." << std::endl;
 			throw chunk_load_exception();
 		}
 
@@ -762,7 +781,7 @@ void play_sound_internal(const std::string& files, channel_group group, unsigned
 	}
 
 	if(res < 0) {
-		ERR_AUDIO << "error playing sound effect: " << Mix_GetError() << "\n";
+		ERR_AUDIO << "error playing sound effect: " << Mix_GetError() << std::endl;
 		//still keep it in the sound cache, in case we want to try again later
 		return;
 	}

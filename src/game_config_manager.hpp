@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2013 by Andrius Silinskas <silinskas.andrius@gmail.com>
+   Copyright (C) 2013 - 2014 by Andrius Silinskas <silinskas.andrius@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -43,7 +43,8 @@ private:
 	game_config_manager(const game_config_manager&);
 	void operator=(const game_config_manager&);
 
-	void load_game_config(FORCE_RELOAD_CONFIG force_reload);
+	void load_game_config(FORCE_RELOAD_CONFIG force_reload,
+		game_classification const* classification = NULL);
 
 	// load_game_config() helper functions.
 	void load_addons_cfg();

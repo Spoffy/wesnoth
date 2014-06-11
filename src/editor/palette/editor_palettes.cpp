@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 #include "marked-up_text.hpp"
 #include "tooltips.hpp"
 #include "overlay.hpp"
+#include "filesystem.hpp"
 
 #include "editor/action/mouse/mouse_action.hpp"
 
@@ -60,12 +61,20 @@ void editor_palette<Item>::expand_palette_groups_menu(std::vector<std::string>& 
 				std::stringstream str;
 				str << IMAGE_PREFIX << item_groups[mci].icon;
 				if (mci == active_group_index()) {
-					str << "_30-pressed.png";
+
+					if (file_exists(str.str() + "_30-pressed.png" ) ) {
+						str << "_30-pressed.png";
+					} else {
+						str << "_30.png~CS(70,70,0)";
+					}
+
 				} else {
 					str << "_30.png";
 				}
 				str << COLUMN_SEPARATOR << groupname;
 				groups.push_back(str.str());
+
+
 			}
 			items.insert(items.begin() + i, groups.begin(), groups.end());
 			break;
@@ -175,7 +184,7 @@ void editor_palette<Item>::set_group(const std::string& id)
 	active_group_ = id;
 
 	if(active_group().empty()) {
-		ERR_ED << "No items found in group with the id: '" << id << "'.\n";
+		ERR_ED << "No items found in group with the id: '" << id << "'." << std::endl;
 	}
 
 	gui_.set_palette_report(active_group_report());
@@ -299,6 +308,24 @@ template size_t editor_palette<unit_type>::num_items();
 template size_t editor_palette<overlay>::num_items();
 
 template<class Item>
+bool editor_palette<Item>::is_selected_fg_item(const std::string& id)
+{
+	return selected_fg_item_ == id;
+}
+template bool editor_palette<t_translation::t_terrain>::is_selected_fg_item(const std::string& id);
+template bool editor_palette<unit_type>::is_selected_fg_item(const std::string& id);
+template bool editor_palette<overlay>::is_selected_fg_item(const std::string& id);
+
+template<class Item>
+bool editor_palette<Item>::is_selected_bg_item(const std::string& id)
+{
+	return selected_bg_item_ == id;
+}
+template bool editor_palette<t_translation::t_terrain>::is_selected_bg_item(const std::string& id);
+template bool editor_palette<unit_type>::is_selected_bg_item(const std::string& id);
+template bool editor_palette<overlay>::is_selected_bg_item(const std::string& id);
+
+template<class Item>
 void editor_palette<Item>::draw_contents()
 {
 	if (*active_mouse_action_)
@@ -370,12 +397,23 @@ void editor_palette<Item>::draw_contents()
 		tile.set_item_image(item_image);
 		tile.set_item_id(item_id);
 
-		if (get_id((*item).second) == selected_bg_item_
-				&& get_id((*item).second) == selected_fg_item_) {
+//		if (get_id((*item).second) == selected_bg_item_
+//				&& get_id((*item).second) == selected_fg_item_) {
+//			tile.set_pressed(gui::tristate_button::BOTH);
+//		} else if (get_id((*item).second) == selected_bg_item_) {
+//			tile.set_pressed(gui::tristate_button::RIGHT);
+//		} else if (get_id((*item).second) == selected_fg_item_) {
+//			tile.set_pressed(gui::tristate_button::LEFT);
+//		} else {
+//			tile.set_pressed(gui::tristate_button::NONE);
+//		}
+
+		if (is_selected_bg_item(get_id(item->second))
+				&& is_selected_fg_item(get_id(item->second))) {
 			tile.set_pressed(gui::tristate_button::BOTH);
-		} else if (get_id((*item).second) == selected_bg_item_) {
+		} else if (is_selected_bg_item(get_id(item->second))) {
 			tile.set_pressed(gui::tristate_button::RIGHT);
-		} else if (get_id((*item).second) == selected_fg_item_) {
+		} else if (is_selected_fg_item(get_id(item->second))) {
 			tile.set_pressed(gui::tristate_button::LEFT);
 		} else {
 			tile.set_pressed(gui::tristate_button::NONE);

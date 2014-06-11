@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+   Copyright (C) 2009 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
 #ifndef IMAGE_MODIFICATIONS_HPP_INCLUDED
 #define IMAGE_MODIFICATIONS_HPP_INCLUDED
 
-#include "sdl_utils.hpp"
+#include "sdl/utils.hpp"
 #include <queue>
 
 namespace image {
@@ -184,12 +184,22 @@ class rotate_modification : public modification
 public:
 	/**
 	 * Constructor.
+	 * @pre @zoom >= @offset   Otherwise the result will have empty pixels.
+     * @pre @offset > 0        Otherwise the procedure will not return.
+	 *
 	 * @param degrees Amount of rotation (in degrees).
 	 *                Positive values are clockwise; negative are counter-clockwise.
-	 *                Only multiples of 90 are supported.
+	 * @param zoom    The zoom level to calculate the rotation from.
+	 *                Greater values result in better results and increased runtime.
+	 *                This parameter will be ignored if @degrees is a multiple of 90.
+	 * @param offset  Determines the step size of the scanning of the zoomed source.
+	 *                Different offsets can produce better results, try them out.
+	 *                Greater values result in decreased runtime.
+	 *                This parameter will be ignored if @degrees is a multiple of 90.
+	 *                If @offset is greater than @zoom the result will have empty pixels.
 	 */
-	rotate_modification(int degrees = 90)
-		: degrees_(degrees)
+	rotate_modification(int degrees = 90, int zoom = 16, int offset = 8)
+		: degrees_(degrees), zoom_(zoom), offset_(offset)
 	{}
 	virtual surface operator()(const surface& src) const;
 
@@ -197,6 +207,8 @@ public:
 
 private:
 	int degrees_;
+	int zoom_;
+	int offset_;
 };
 
 /**

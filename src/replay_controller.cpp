@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playlevel Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -15,18 +15,25 @@
 
 #include "global.hpp"
 
+#include "replay_controller.hpp"
+
+#include "carryover.hpp"
 #include "actions/vision.hpp"
 #include "game_end_exceptions.hpp"
-#include "game_events.hpp"
+#include "game_events/handlers.hpp"
 #include "gettext.hpp"
 #include "log.hpp"
 #include "map_label.hpp"
+#include "mouse_handler_base.hpp"
 #include "replay.hpp"
-#include "replay_controller.hpp"
+#include "random_new_deterministic.hpp"
 #include "resources.hpp"
 #include "savegame.hpp"
+#include "saved_game.hpp"
+#include "synced_context.hpp"
 
 #include <boost/foreach.hpp>
+#include <boost/scoped_ptr.hpp>
 
 static lg::log_domain log_engine("engine");
 #define DBG_NG LOG_STREAM(debug, log_engine)
@@ -34,48 +41,84 @@ static lg::log_domain log_engine("engine");
 static lg::log_domain log_replay("replay");
 #define DBG_REPLAY LOG_STREAM(debug, log_replay)
 #define LOG_REPLAY LOG_STREAM(info, log_replay)
+#define ERR_REPLAY LOG_STREAM(err, log_replay)
+
+possible_end_play_signal play_replay_level_main_loop(replay_controller & replaycontroller, bool & is_unit_test);
 
 LEVEL_RESULT play_replay_level(const config& game_config,
-		const config* level, CVideo& video, game_state& state_of_game)
+		CVideo& video, saved_game& state_of_game, bool is_unit_test)
 {
-	try{
-		const int ticks = SDL_GetTicks();
-		int num_turns = (*level)["turns"].to_int(-1);
+	const int ticks = SDL_GetTicks();
 
-		config init_level = *level;
-		carryover_info sides(state_of_game.carryover_sides);
-		sides.transfer_to(init_level);
-		state_of_game.carryover_sides = sides.to_config();
+	config init_level = state_of_game.replay_start();
 
-		DBG_NG << "creating objects... " << (SDL_GetTicks() - ticks) << "\n";
-		replay_controller replaycontroller(init_level, state_of_game, ticks, num_turns, game_config, video);
-		DBG_NG << "created objects... " << (SDL_GetTicks() - replaycontroller.get_ticks()) << "\n";
-		const events::command_disabler disable_commands;
+	DBG_NG << "creating objects... " << (SDL_GetTicks() - ticks) << std::endl;
 
-		//replay event-loop
-		for (;;){
-			replaycontroller.play_slice();
-		}
+	boost::scoped_ptr<replay_controller> rc;
+
+	try {
+		rc.reset(new replay_controller(init_level, state_of_game, ticks, game_config, video));
+	} catch (end_level_exception & e){
+		return e.result;
+	} catch (end_turn_exception &) {
+		throw; //this should never happen? It would likely have crashed the program before, so in refactor I won't change but we should fix it later.
 	}
-	catch(end_level_exception&){
-		DBG_NG << "play_replay_level: end_level_exception\n";
+	DBG_NG << "created objects... " << (SDL_GetTicks() - rc->get_ticks()) << std::endl;
+
+	const events::command_disabler disable_commands;
+
+	//replay event-loop
+	possible_end_play_signal signal = play_replay_level_main_loop(*rc, is_unit_test);
+
+	if (signal) {
+		switch( boost::apply_visitor( get_signal_type(), *signal ) ) {
+			case END_LEVEL:
+				DBG_NG << "play_replay_level: end_level_exception" << std::endl;
+				break;
+			case END_TURN:
+				DBG_NG << "Unchecked end_turn_exception signal propogated to replay controller play_replay_level! Terminating." << std::endl;
+				assert(false && "unchecked end turn exception in replay controller");
+				throw 42;
+		}
 	}
 
 	return VICTORY;
 }
 
+possible_end_play_signal play_replay_level_main_loop(replay_controller & replaycontroller, bool & is_unit_test) {
+	if (is_unit_test) {
+		return replaycontroller.try_run_to_completion();
+	}
+
+	for (;;){
+		HANDLE_END_PLAY_SIGNAL( replaycontroller.play_slice() );
+	}
+}
+
+possible_end_play_signal replay_controller::try_run_to_completion() {
+	for (;;) {
+		HANDLE_END_PLAY_SIGNAL( play_slice() );
+		if (recorder.at_end()) {
+			return boost::none;
+		} else {
+			if (!is_playing_) {
+				PROPOGATE_END_PLAY_SIGNAL( play_replay() );
+			}
+		}
+	}
+}
+
 replay_controller::replay_controller(const config& level,
-		game_state& state_of_game, const int ticks, const int num_turns,
+		saved_game& state_of_game, const int ticks,
 		const config& game_config, CVideo& video) :
-	play_controller(level, state_of_game, ticks, num_turns, game_config, video, false),
-	teams_start_(teams_),
+	play_controller(level, state_of_game, ticks, game_config, video, false),
 	gamestate_start_(gamestate_),
-	units_start_(units_),
-	tod_manager_start_(level, num_turns),
+	gameboard_start_(gameboard_),
+	tod_manager_start_(level),
 	current_turn_(1),
 	is_playing_(false),
 	show_everything_(false),
-	show_team_(state_of_game.classification().campaign_type == "multiplayer" ? 0 : 1)
+	show_team_(state_of_game.classification().campaign_type == game_classification::MULTIPLAYER ? 0 : 1)
 {
 	tod_manager_start_ = tod_manager_;
 
@@ -114,10 +157,10 @@ void replay_controller::init_gui(){
 	else
 		gui_->set_team(0, show_everything_);
 
-	gui_->scroll_to_leader(units_, player_number_, display::WARP);
+	gui_->scroll_to_leader(player_number_, display::WARP);
 	update_locker lock_display((*gui_).video(),false);
-	for(std::vector<team>::iterator t = teams_.begin(); t != teams_.end(); ++t) {
-		t->reset_objectives_changed();
+	BOOST_FOREACH(team & t, gameboard_.teams_) {
+		t.reset_objectives_changed();
 	}
 
 	update_replay_ui();
@@ -251,7 +294,9 @@ void replay_controller::reset_replay_ui()
 }
 
 
-void replay_controller::reset_replay(){
+void replay_controller::reset_replay()
+{
+	DBG_REPLAY << "replay_controller::reset_replay\n";
 
 	gui_->clear_chat_messages();
 	is_playing_ = false;
@@ -262,9 +307,11 @@ void replay_controller::reset_replay(){
 	tod_manager_= tod_manager_start_;
 	recorder.start_replay();
 	recorder.set_skip(false);
-	units_ = units_start_;
 	gamestate_ = gamestate_start_;
-	teams_ = teams_start_;
+	gameboard_ = gameboard_start_;
+	gui_->change_display_context(&gameboard_); //this doesn't change the pointer value, but it triggers the gui to update the internal terrain builder object,
+						   //idk what the consequences of not doing that are, but its probably a good idea to do it, esp. if layout
+						   //of game_board changes in the future
 	if (events_manager_ ){
 		// NOTE: this double reset is required so that the new
 		// instance of game_events::manager isn't created before the
@@ -276,8 +323,13 @@ void replay_controller::reset_replay(){
 
 	gui_->labels().read(level_);
 
+	resources::gamedata->rng().seed_random(level_["random_seed"], level_["random_calls"]);
 	statistics::fresh_stats();
 	set_victory_when_enemies_defeated(level_["victory_when_enemies_defeated"].to_bool(true));
+
+	resources::screen->recalculate_minimap();
+	resources::screen->invalidate_all();
+	resources::screen->rebuild_all();
 
 	// Add era events for MP game.
 	if (const config &era_cfg = level_.child("era")) {
@@ -285,9 +337,24 @@ void replay_controller::reset_replay(){
 	}
 
 	// Scenario initialization. (c.f. playsingle_controller::play_scenario())
-	fire_prestart(false);
-	init_gui();
-	fire_start(false);
+	fire_preload();
+	if(true){ //block for set_scontext_synced
+		if(recorder.add_start_if_not_there_yet())
+		{
+			ERR_REPLAY << "inserted missing [start]" << std::endl;
+		}
+		config* pstart = recorder.get_next_action();
+		assert(pstart->has_child("start"));
+		/*
+			use this after recorder.add_synced_command
+			because set_scontext_synced sets the checkup to the last added command
+		*/
+		set_scontext_synced sync;
+
+		fire_prestart();
+		init_gui();
+		fire_start(true);
+	}
 	// Since we did not fire the start event, it_is_a_new_turn_ has the wrong value.
 	it_is_a_new_turn_ = true;
 	update_gui();
@@ -299,42 +366,53 @@ void replay_controller::stop_replay(){
 	is_playing_ = false;
 }
 
-void replay_controller::replay_next_turn(){
+possible_end_play_signal replay_controller::replay_next_turn(){
 	is_playing_ = true;
 	replay_ui_playback_should_start();
 
-	play_turn();
+	PROPOGATE_END_PLAY_SIGNAL( play_turn() );
 
  	if (!skip_replay_ || !is_playing_){
-		gui_->scroll_to_leader(units_, player_number_,game_display::ONSCREEN,false);
+		gui_->scroll_to_leader(player_number_,game_display::ONSCREEN,false);
 	}
 
 	replay_ui_playback_should_stop();
+	return boost::none;
 }
 
-void replay_controller::replay_next_side(){
+possible_end_play_signal replay_controller::replay_next_side(){
 	is_playing_ = true;
 	replay_ui_playback_should_start();
 
-	play_side(player_number_ - 1, false);
+	HANDLE_END_PLAY_SIGNAL( play_side() );
+	while (current_team().is_empty()) {
+		HANDLE_END_PLAY_SIGNAL( play_side() );
+	}
 
 	if (!skip_replay_ || !is_playing_) {
-		gui_->scroll_to_leader(units_, player_number_,game_display::ONSCREEN,false);
+		gui_->scroll_to_leader(player_number_,game_display::ONSCREEN,false);
 	}
 
 	replay_ui_playback_should_stop();
+	return boost::none;
 }
 
 void replay_controller::process_oos(const std::string& msg) const
 {
-	if (game_config::ignore_replay_errors) return;
+	if (game_config::ignore_replay_errors) {
+		return;
+	}
 
 	std::stringstream message;
 	message << _("The replay is corrupt/out of sync. It might not make much sense to continue. Do you want to save the game?");
 	message << "\n\n" << _("Error details:") << "\n\n" << msg;
 
-	savegame::oos_savegame save(to_config());
-	save.save_game_interactive(resources::screen->video(), message.str(), gui::YES_NO); // can throw end_level_exception
+	if (non_interactive()) {
+		throw game::game_error(message.str()); //throw end_level_exception(DEFEAT);
+	} else {
+		savegame::oos_savegame save(gamestate_, *gui_, to_config());
+		save.save_game_interactive(resources::screen->video(), message.str(), gui::YES_NO); // can throw end_level_exception
+	}
 }
 
 void replay_controller::replay_show_everything(){
@@ -364,35 +442,49 @@ void replay_controller::replay_skip_animation(){
 }
 
 //move all sides till stop/end
-void replay_controller::play_replay(){
+possible_end_play_signal replay_controller::play_replay(){
 
 	if (recorder.at_end()){
 		//shouldn't actually happen
-		return;
+		return boost::none;
 	}
 
-	try{
-		is_playing_ = true;
-		replay_ui_playback_should_start();
+	is_playing_ = true;
+	replay_ui_playback_should_start();
 
-		DBG_REPLAY << "starting main loop\n" << (SDL_GetTicks() - ticks_) << "\n";
-		for(; !recorder.at_end() && is_playing_; first_player_ = 1) {
-			play_turn();
+	possible_end_play_signal signal = play_replay_main_loop();
+
+	if(signal) {
+		switch ( boost::apply_visitor(get_signal_type(), *signal)) {
+			case END_TURN:
+				return signal;
+			case END_LEVEL:
+				if ( boost::apply_visitor(get_result(), *signal) == QUIT) {
+					return signal;
+				}
 		}
 
-		if (!is_playing_) {
-			gui_->scroll_to_leader(units_, player_number_,game_display::ONSCREEN,false);
-		}
 	}
-	catch(end_level_exception& e){
-		if (e.result == QUIT) throw;
+
+	if (!is_playing_) {
+		gui_->scroll_to_leader(player_number_,game_display::ONSCREEN,false);
 	}
 
 	replay_ui_playback_should_stop();
+
+	return boost::none;
+}
+
+possible_end_play_signal replay_controller::play_replay_main_loop() {
+	DBG_REPLAY << "starting main loop\n" << (SDL_GetTicks() - ticks_) << "\n";
+	for(; !recorder.at_end() && is_playing_; first_player_ = 1) {
+		PROPOGATE_END_PLAY_SIGNAL ( play_turn() );
+	}
+	return boost::none;
 }
 
 //make all sides move, then stop
-void replay_controller::play_turn(){
+possible_end_play_signal replay_controller::play_turn(){
 
 	LOG_REPLAY << "turn: " << current_turn_ << "\n";
 
@@ -403,63 +495,84 @@ void replay_controller::play_turn(){
 	bool last_team = false;
 
 	while ( (!last_team) && (!recorder.at_end()) && is_playing_ ){
-		last_team = static_cast<size_t>(player_number_) == teams_.size();
-		play_side(player_number_ - 1, false);
-		play_slice();
+		last_team = static_cast<size_t>(player_number_) == gameboard_.teams_.size();
+		PROPOGATE_END_PLAY_SIGNAL( play_side() );
+		HANDLE_END_PLAY_SIGNAL( play_slice() );
 	}
+	return boost::none;
 }
 
 //make only one side move
-void replay_controller::play_side(const unsigned int /*team_index*/, bool){
+possible_end_play_signal replay_controller::play_side() {
 
 	DBG_REPLAY << "Status turn number: " << turn() << "\n";
 	DBG_REPLAY << "Replay_Controller turn number: " << current_turn_ << "\n";
 	DBG_REPLAY << "Player number: " << player_number_ << "\n";
 
-	try{
-		// If a side is empty skip over it.
-		if (!current_team().is_empty()) {
-			statistics::reset_turn_stats(current_team().save_id());
+	// If a side is empty skip over it.
+	if (!current_team().is_empty()) {
+		statistics::reset_turn_stats(current_team().save_id());
 
-			play_controller::init_side(player_number_ - 1, true);
+		possible_end_play_signal signal = play_controller::init_side(true);
 
-			DBG_REPLAY << "doing replay " << player_number_ << "\n";
-			do_replay(player_number_);
-
-			finish_side_turn();
-		}
-
-		player_number_++;
-
-		if (static_cast<size_t>(player_number_) > teams_.size()) {
-			finish_turn();
-			tod_manager_.next_turn();
-			it_is_a_new_turn_ = true;
-			player_number_ = 1;
-			current_turn_++;
-			gui_->new_turn();
-		}
-
-		// This is necessary for replays in order to show possible movements.
-		BOOST_FOREACH(unit &u, units_) {
-			if (u.side() == player_number_) {
-				u.new_turn();
+		if (signal) {
+			switch (boost::apply_visitor(get_signal_type(), *signal) ) {
+				case END_TURN:
+					return signal;
+				case END_LEVEL:
+					//VICTORY/DEFEAT end_level_exception shall not return to title screen
+					LEVEL_RESULT res = boost::apply_visitor(get_result(), *signal);
+					if ( res != VICTORY && res != DEFEAT ) return signal;
 			}
 		}
 
-		update_teams();
-		update_gui();
+		DBG_REPLAY << "doing replay " << player_number_ << "\n";
+		// if have reached the end we don't want to execute finish_side_turn and finish_turn
+		// becasue we might not have enough data to execute them (like advancements during turn_end for example)
+
+		try {
+			if(do_replay() != REPLAY_FOUND_END_TURN) {
+				// We reached the end of teh replay without finding and end turn tag.
+				return boost::none;
+			}
+		} catch(end_level_exception& e){
+			//VICTORY/DEFEAT end_level_exception shall not return to title screen
+			if (e.result != VICTORY && e.result != DEFEAT) {
+				return possible_end_play_signal(e.to_struct());
+			}
+		} catch (end_turn_exception & e) {
+			return possible_end_play_signal(e.to_struct());
+		}
+
+		finish_side_turn();
 	}
-	catch(end_level_exception& e){
-		//VICTORY/DEFEAT end_level_exception shall not return to title screen
-		if (e.result != VICTORY && e.result != DEFEAT) throw;
+
+	player_number_++;
+
+	if (static_cast<size_t>(player_number_) > gameboard_.teams_.size()) {
+		//during the orginal game player_number_ would also be gameboard_.teams_.size(),
+		player_number_ = gameboard_.teams_.size();
+		finish_turn();
+		tod_manager_.next_turn();
+		it_is_a_new_turn_ = true;
+		player_number_ = 1;
+		current_turn_++;
+		gui_->new_turn();
 	}
+
+	// This is necessary for replays in order to show possible movements.
+	gameboard_.new_turn(player_number_);
+
+	update_teams();
+	update_gui();
+
+	return boost::none;
 }
 
 void replay_controller::update_teams(){
 
 	int next_team = player_number_;
-	if(static_cast<size_t>(next_team) > teams_.size()) {
+	if(static_cast<size_t>(next_team) > gameboard_.teams_.size()) {
 		next_team = 1;
 	}
 
@@ -504,18 +617,14 @@ void replay_controller::handle_generic_event(const std::string& name){
 	}
 }
 
-bool replay_controller::can_execute_command(hotkey::HOTKEY_COMMAND command, int index) const
+bool replay_controller::can_execute_command(const hotkey::hotkey_command& cmd, int index) const
 {
-	bool result = play_controller::can_execute_command(command,index);
+	hotkey::HOTKEY_COMMAND command = cmd.id;
+	bool result = play_controller::can_execute_command(cmd,index);
 
 	switch(command) {
 
 	//commands we can always do
-	case hotkey::HOTKEY_PLAY_REPLAY:
-	case hotkey::HOTKEY_RESET_REPLAY:
-	case hotkey::HOTKEY_STOP_REPLAY:
-	case hotkey::HOTKEY_REPLAY_NEXT_TURN:
-	case hotkey::HOTKEY_REPLAY_NEXT_SIDE:
 	case hotkey::HOTKEY_REPLAY_SHOW_EVERYTHING:
 	case hotkey::HOTKEY_REPLAY_SHOW_EACH:
 	case hotkey::HOTKEY_REPLAY_SHOW_TEAM1:
@@ -525,7 +634,19 @@ bool replay_controller::can_execute_command(hotkey::HOTKEY_COMMAND command, int 
 	case hotkey::HOTKEY_CHAT_LOG:
 		return true;
 
+	case hotkey::HOTKEY_REPLAY_RESET:
+		return events::commands_disabled <= 1;
+
+	//commands we only can do before the end of the replay
+	case hotkey::HOTKEY_REPLAY_STOP:
+		return !recorder.at_end();
+	case hotkey::HOTKEY_REPLAY_PLAY:
+	case hotkey::HOTKEY_REPLAY_NEXT_TURN:
+	case hotkey::HOTKEY_REPLAY_NEXT_SIDE:
+		//we have one events_disabler when starting the replay_controller and a second when entering the synced context.
+		return (events::commands_disabled <= 1 ) && !recorder.at_end();
 	default:
 		return result;
 	}
 }
+

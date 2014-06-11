@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Dominic Bolin <dominic.bolin@exong.net>
+   Copyright (C) 2006 - 2014 by Dominic Bolin <dominic.bolin@exong.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -292,7 +292,7 @@ std::vector<boost::tuple<t_string,t_string,t_string> > unit::ability_tooltips(st
 bool unit::ability_active(const std::string& ability,const config& cfg,const map_location& loc) const
 {
 	bool illuminates = ability == "illuminates";
-	assert(resources::units && resources::game_map && resources::teams && resources::tod_manager);
+	assert(resources::units && resources::gameboard && resources::teams && resources::tod_manager);
 
 	if (const config &afilter = cfg.child("filter"))
 		if ( !matches_filter(vconfig(afilter), loc, illuminates) )
@@ -670,7 +670,7 @@ void attack_type::set_specials_context(const map_location& unit_loc,
 void attack_type::set_specials_context(const map_location& loc, bool attacking) const
 {
 	self_loc_ = loc;
-	other_loc_ = map_location::null_location;
+	other_loc_ = map_location::null_location();
 	is_attacker_ = attacking;
 	other_attack_ = NULL;
 }
@@ -692,7 +692,7 @@ void attack_type::modified_attacks(bool is_backstab, unsigned & min_attacks,
 	int attacks_value = attacks_effect.get_composite_value();
 	if ( attacks_value < 0 ) {
 		attacks_value = num_attacks();
-		ERR_NG << "negative number of strikes after applying weapon specials\n";
+		ERR_NG << "negative number of strikes after applying weapon specials" << std::endl;
 	}
 
 	// Apply [swarm].
@@ -785,7 +785,7 @@ namespace { // Helpers for attack_type::special_active()
 			// is active, in that it can be used, even though the player might
 			// need to select an appropriate opponent.)
 			return true;
- 
+
 		const config & filter_child = filter.child(child_tag);
 		if ( !filter_child )
 			// The special does not filter on this unit, so we pass.
@@ -999,7 +999,7 @@ effect::effect(const unit_ability_list& list, int def, bool backstab) :
 		}
 		if (const config::attribute_value *v = cfg.get("divide")) {
 			if (*v == 0) {
-				ERR_NG << "division by zero with divide= in ability/weapon special " << effect_id << "\n";
+				ERR_NG << "division by zero with divide= in ability/weapon special " << effect_id << std::endl;
 			}
 			else {
 				int divide = int(v->to_double() * 100);

@@ -94,6 +94,8 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
+				Description="WML unit tests for Wesnoth"
+				CommandLine="WML_tests.cmd $(OutDir)"
 			/>
 		</Configuration>
 		<Configuration
@@ -126,7 +128,7 @@
 				EnableIntrinsicFunctions="true"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories="..\..\src"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
+				PreprocessorDefinitions="WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="false"
@@ -182,6 +184,8 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
+				Description="WML unit tests for Wesnoth"
+				CommandLine="WML_tests.cmd"
 			/>
 		</Configuration>
 		<Configuration
@@ -261,6 +265,8 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
+				Description="WML unit tests for Wesnoth"
+				CommandLine="WML_tests.cmd $(OutDir)"
 			/>
 		</Configuration>
 		<Configuration
@@ -341,7 +347,8 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
-				CommandLine=""
+				Description="WML unit tests for Wesnoth"
+				CommandLine="WML_tests.cmd $(OutDir)"
 			/>
 		</Configuration>
 		<Configuration
@@ -374,7 +381,7 @@
 				EnableIntrinsicFunctions="true"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories="..\..\src"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS;MSVC_DO_UNIT_TESTS"
+				PreprocessorDefinitions="WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS;MSVC_DO_UNIT_TESTS"
 				MinimalRebuild="true"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="false"
@@ -431,7 +438,8 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
-				CommandLine=""
+				Description="WML unit tests for Wesnoth"
+				CommandLine="WML_tests.cmd $(OutDir)"
 			/>
 		</Configuration>
 		<Configuration
@@ -464,7 +472,7 @@
 				EnableIntrinsicFunctions="true"
 				WholeProgramOptimization="false"
 				AdditionalIncludeDirectories="..\..\src"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
+				PreprocessorDefinitions="WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="false"
@@ -520,6 +528,8 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
+				Description="WML unit tests for Wesnoth"
+				CommandLine="WML_tests.cmd"
 			/>
 		</Configuration>
 	</Configurations>
@@ -3164,6 +3174,66 @@
 				</File>
 				<File
 					RelativePath="..\..\src\ai\akihara\recruitment.hpp"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="recruitment"
+				>
+				<File
+					RelativePath="..\..\src\ai\recruitment\recruitment.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\ai\recruitment\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\ai\recruitment\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\ai\recruitment\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\ai\recruitment\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\ai\recruitment\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\ai\recruitment\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\ai\recruitment\recruitment.hpp"
 					>
 				</File>
 			</Filter>
@@ -7235,6 +7305,62 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\gui\dialogs\core_selection.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\core_selection.hpp"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\gui\dialogs\chat_log.cpp"
 					>
 					<FileConfiguration
@@ -8023,6 +8149,62 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\gui\dialogs\game_paths.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\game_paths.hpp"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\gui\dialogs\game_save.cpp"
 					>
 					<FileConfiguration
@@ -8587,62 +8769,6 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\src\gui\dialogs\mp_create_game_choose_mods.cpp"
-					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)\Gui\Dialogs\"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)\Gui\Dialogs\"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Debug_with_VLD|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)\Gui\Dialogs\"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Test_Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)\Gui\Dialogs\"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Test_Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)\Gui\Dialogs\"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="ReleaseDEBUG|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)\Gui\Dialogs\"
-						/>
-					</FileConfiguration>
-				</File>
-				<File
-					RelativePath="..\..\src\gui\dialogs\mp_create_game_choose_mods.hpp"
-					>
-				</File>
-				<File
 					RelativePath="..\..\src\gui\dialogs\mp_create_game_set_password.cpp"
 					>
 					<FileConfiguration
@@ -9091,6 +9217,62 @@
 					>
 				</File>
 				<File
+					RelativePath="..\..\src\gui\dialogs\screenshot_notification.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\screenshot_notification.hpp"
+					>
+				</File>
+				<File
 					RelativePath="..\..\src\gui\dialogs\simple_item_selector.cpp"
 					>
 					<FileConfiguration
@@ -9144,6 +9326,62 @@
 				</File>
 				<File
 					RelativePath="..\..\src\gui\dialogs\simple_item_selector.hpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\theme_list.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\theme_list.hpp"
 					>
 				</File>
 				<File
@@ -9421,6 +9659,62 @@
 							ObjectFile="$(IntDir)\Gui\Dialogs\"
 						/>
 					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\wml_error.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\Gui\Dialogs\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\gui\dialogs\wml_error.hpp"
+					>
 				</File>
 				<File
 					RelativePath="..\..\src\gui\dialogs\wml_message.cpp"
@@ -9855,6 +10149,118 @@
 					</File>
 					<File
 						RelativePath="..\..\src\gui\dialogs\editor\editor_edit_label.hpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\src\gui\dialogs\editor\editor_edit_scenario.cpp"
+						>
+						<FileConfiguration
+							Name="Debug|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Release|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Debug_with_VLD|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Test_Debug|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Test_Release|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="ReleaseDEBUG|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+					</File>
+					<File
+						RelativePath="..\..\src\gui\dialogs\editor\editor_edit_scenario.hpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\src\gui\dialogs\editor\editor_edit_side.cpp"
+						>
+						<FileConfiguration
+							Name="Debug|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Release|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Debug_with_VLD|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Test_Debug|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Test_Release|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="ReleaseDEBUG|Win32"
+							>
+							<Tool
+								Name="VCCLCompilerTool"
+								ObjectFile="$(IntDir)\Gui\Dialogs\Editor\"
+							/>
+						</FileConfiguration>
+					</File>
+					<File
+						RelativePath="..\..\src\gui\dialogs\editor\editor_edit_side.hpp"
 						>
 					</File>
 				</Filter>
@@ -13818,6 +14224,54 @@
 			<File
 				RelativePath="..\..\src\scripting\debug_lua.cpp"
 				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath="..\..\src\scripting\debug_lua.hpp"
@@ -13880,7 +14334,115 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\scripting\lua_api.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
 				RelativePath="..\..\src\scripting\lua_api.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\scripting\lua_types.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Scripting\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\scripting\lua_types.hpp"
 				>
 			</File>
 		</Filter>
@@ -15412,7 +15974,15 @@
 			Name="utils"
 			>
 			<File
+				RelativePath="..\..\src\utils\iterator.hpp"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\utils\reference_counter.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\utils\smart_list.hpp"
 				>
 			</File>
 		</Filter>
@@ -15605,6 +16175,62 @@
 			</File>
 			<File
 				RelativePath="..\..\src\tests\test_commandline_options.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\tests\test_config.cpp"
 				>
 				<FileConfiguration
 					Name="Debug|Win32"
@@ -15885,6 +16511,174 @@
 			</File>
 			<File
 				RelativePath="..\..\src\tests\test_lexical_cast.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\tests\test_make_enum.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\tests\test_map_location.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Tests\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\tests\test_mp_connect.cpp"
 				>
 				<FileConfiguration
 					Name="Debug|Win32"
@@ -17622,6 +18416,1486 @@
 				>
 			</File>
 		</Filter>
+		<Filter
+			Name="Generators"
+			>
+			<File
+				RelativePath="..\..\src\generators\cavegen.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\cavegen.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\map_create.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\map_create.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\mapgen.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\mapgen.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\mapgen_dialog.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\generators\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\generators\mapgen_dialog.hpp"
+				>
+			</File>
+			<Filter
+				Name="YAMG"
+				>
+				<File
+					RelativePath="..\..\src\generators\yamg\ya_mapgen.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\ya_mapgen.hpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_decls.hpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_hex.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_hex.hpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_hexheap.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_hexheap.hpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_params.cpp"
+					>
+					<FileConfiguration
+						Name="Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug_with_VLD|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Debug|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Test_Release|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="ReleaseDEBUG|Win32"
+						>
+						<Tool
+							Name="VCCLCompilerTool"
+							ObjectFile="$(IntDir)\generators\yamg\"
+						/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath="..\..\src\generators\yamg\yamg_params.hpp"
+					>
+				</File>
+			</Filter>
+		</Filter>
+		<Filter
+			Name="Game_Events"
+			>
+			<File
+				RelativePath="..\..\src\game_events\action_wml.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\action_wml.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\conditional_wml.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\conditional_wml.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\entity_location.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\entity_location.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\handlers.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\handlers.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\menu_item.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\menu_item.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\pump.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\pump.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\wmi_container.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Game_Events\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\game_events\wmi_container.hpp"
+				>
+			</File>
+		</Filter>
+		<Filter
+			Name="Hotkeys"
+			>
+			<File
+				RelativePath="..\..\src\hotkey\command_executor.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\command_executor.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_command.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_command.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_item.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_item.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_manager.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_manager.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\hotkey\hotkey_preferences_display.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\Hotkeys\"
+					/>
+				</FileConfiguration>
+			</File>
+		</Filter>
+		<Filter
+			Name="SDL"
+			>
+			<File
+				RelativePath="..\..\src\sdl\alpha.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\alpha.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\compat.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\exception.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\exception.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\rect.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\rect.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\texture.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\texture.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\utils.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\utils.hpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\window.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Debug_with_VLD|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Debug|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Test_Release|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="ReleaseDEBUG|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						ObjectFile="$(IntDir)\SDL\"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath="..\..\src\sdl\window.hpp"
+				>
+			</File>
+		</Filter>
 		<File
 			RelativePath="..\..\src\about.cpp"
 			>
@@ -17675,11 +19949,11 @@
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\builder.cpp"
+			RelativePath="..\..\src\terrain_builder.cpp"
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\builder.hpp"
+			RelativePath="..\..\src\terrain_builder.hpp"
 			>
 		</File>
 		<File
@@ -17691,11 +19965,11 @@
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\cavegen.cpp"
+			RelativePath="..\..\src\carryover.cpp"
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\cavegen.hpp"
+			RelativePath="..\..\src\carryover.hpp"
 			>
 		</File>
 		<File
@@ -17755,6 +20029,14 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\desktop_util.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\desktop_util.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\dialogs.cpp"
 			>
 		</File>
@@ -17768,6 +20050,14 @@
 		</File>
 		<File
 			RelativePath="..\..\src\display.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\display_context.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\display_context.hpp"
 			>
 		</File>
 		<File
@@ -17795,6 +20085,14 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\flg_manager.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\flg_manager.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\floating_point_emulation.hpp"
 			>
 		</File>
@@ -17812,6 +20110,14 @@
 		</File>
 		<File
 			RelativePath="..\..\src\font.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\format_time_summary.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\format_time_summary.hpp"
 			>
 		</File>
 		<File
@@ -17883,6 +20189,14 @@
 			</FileConfiguration>
 		</File>
 		<File
+			RelativePath="..\..\src\game_board.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\game_board.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\game_config.hpp"
 			>
 		</File>
@@ -17924,22 +20238,6 @@
 		</File>
 		<File
 			RelativePath="..\..\src\game_errors.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\game_events.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\game_events.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\game_instance.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\game_instance.hpp"
 			>
 		</File>
 		<File
@@ -18003,18 +20301,6 @@
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\hotkey_preferences_display.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\hotkeys.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\hotkeys.hpp"
-			>
-		</File>
-		<File
 			RelativePath="..\..\src\image.cpp"
 			>
 		</File>
@@ -18063,14 +20349,6 @@
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\leader_list.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\leader_list.hpp"
-			>
-		</File>
-		<File
 			RelativePath="..\..\src\leader_scroll_dialog.cpp"
 			>
 		</File>
@@ -18107,19 +20385,15 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\make_enum.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\map.cpp"
 			>
 		</File>
 		<File
 			RelativePath="..\..\src\map.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\map_create.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\map_create.hpp"
 			>
 		</File>
 		<File
@@ -18144,22 +20418,6 @@
 		</File>
 		<File
 			RelativePath="..\..\src\map_utils.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\mapgen.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\mapgen.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\mapgen_dialog.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\mapgen_dialog.hpp"
 			>
 		</File>
 		<File
@@ -18235,6 +20493,14 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\mp_game_utils.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\mp_game_utils.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\mp_options.cpp"
 			>
 		</File>
@@ -18251,6 +20517,14 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\multiplayer_configure.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\multiplayer_configure.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\multiplayer_connect.cpp"
 			>
 		</File>
@@ -18259,11 +20533,27 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\multiplayer_connect_engine.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\multiplayer_connect_engine.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\multiplayer_create.cpp"
 			>
 		</File>
 		<File
 			RelativePath="..\..\src\multiplayer_create.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\multiplayer_create_engine.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\multiplayer_create_engine.hpp"
 			>
 		</File>
 		<File
@@ -18395,6 +20685,14 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\playturn_network_adapter.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\playturn_network_adapter.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\portrait.cpp"
 			>
 		</File>
@@ -18435,11 +20733,43 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\random_new.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\random_new.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\random_new_deterministic.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\random_new_deterministic.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\random_new_synced.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\random_new_synced.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\replay.cpp"
 			>
 		</File>
 		<File
 			RelativePath="..\..\src\replay.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\replay_helper.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\replay_helper.hpp"
 			>
 		</File>
 		<File
@@ -18479,6 +20809,14 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\src\save_index.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\save_index.hpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\src\savegame.cpp"
 			>
 		</File>
@@ -18487,23 +20825,11 @@
 			>
 		</File>
 		<File
-			RelativePath="..\..\src\savegame_config.cpp"
-			>
-		</File>
-		<File
 			RelativePath="..\..\src\savegame_config.hpp"
 			>
 		</File>
 		<File
 			RelativePath="..\..\src\scoped_resource.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\sdl_utils.cpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\sdl_utils.hpp"
 			>
 		</File>
 		<File
@@ -18540,10 +20866,6 @@
 		</File>
 		<File
 			RelativePath="..\..\src\side_filter.hpp"
-			>
-		</File>
-		<File
-			RelativePath="..\..\src\simple_rng.hpp"
 			>
 		</File>
 		<File
@@ -18584,6 +20906,38 @@
 		</File>
 		<File
 			RelativePath="..\..\src\statistics_dialog.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\strftime.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\strftime.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\synced_checkup.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\synced_checkup.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\synced_context.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\synced_context.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\synced_commands.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\synced_commands.cpp"
 			>
 		</File>
 		<File

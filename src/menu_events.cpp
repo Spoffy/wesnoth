@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playturn Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -21,17 +21,18 @@
 
 #include "global.hpp"
 
+#include "actions/attack.hpp"
 #include "actions/create.hpp"
 #include "actions/move.hpp"
 #include "actions/undo.hpp"
 #include "actions/vision.hpp"
-#include "builder.hpp"
 #include "ai/manager.hpp"
 #include "dialogs.hpp"
 #include "formatter.hpp"
 #include "filechooser.hpp"
+#include "game_board.hpp"
 #include "game_end_exceptions.hpp"
-#include "game_events.hpp"
+#include "game_events/pump.hpp"
 #include "game_preferences.hpp"
 #include "gettext.hpp"
 #include "gui/dialogs/chat_log.hpp"
@@ -57,10 +58,14 @@
 #include "play_controller.hpp"
 #include "preferences_display.hpp"
 #include "replay.hpp"
+#include "replay_helper.hpp"
 #include "resources.hpp"
 #include "savegame.hpp"
+#include "save_index.hpp"
 #include "sound.hpp"
 #include "statistics_dialog.hpp"
+#include "synced_context.hpp"
+#include "terrain_builder.hpp"
 #include "unit_display.hpp"
 #include "wml_separators.hpp"
 #include "formula_string_utils.hpp"
@@ -76,16 +81,15 @@ static lg::log_domain log_engine("engine");
 
 namespace events{
 
-menu_handler::menu_handler(game_display* gui, unit_map& units, std::vector<team>& teams,
-		const config& level, const gamemap& map,
-		const config& game_config, game_state& gamestate) :
+menu_handler::menu_handler(game_display* gui, game_board & board,
+		const config& level,
+		const config& game_config) :
 	gui_(gui),
-	units_(units),
-	teams_(teams),
+	units_(board.units_),
+	teams_(board.teams_),
 	level_(level),
-	map_(map),
+	map_(board.map()),
 	game_config_(game_config),
-	gamestate_(gamestate),
 	textbox_info_(),
 	last_search_(),
 	last_search_hit_()
@@ -238,19 +242,23 @@ void menu_handler::status_table(int selected)
 			// show only a random leader image.
 			if (!fogged || known || game_config::debug) {
 				str << IMAGE_PREFIX << leader->absolute_image();
+#ifndef LOW_MEM
+				str << leader->image_mods();
+#endif
 				leader_bools.push_back(true);
 				leader_name = leader->name();
 			} else {
 				str << IMAGE_PREFIX << std::string("units/unknown-unit.png");
+#ifndef LOW_MEM
+				str << "~RC(magenta>" << teams_[n].color() << ")";
+#endif
 				leader_bools.push_back(false);
 				leader_name = "Unknown";
 			}
-		if (gamestate_.classification().campaign_type == "multiplayer")
+
+			if (resources::classification->campaign_type == game_classification::MULTIPLAYER)
 				leader_name = teams_[n].current_player();
 
-#ifndef LOW_MEM
-			str << leader->image_mods();
-#endif
 		} else {
 			leader_bools.push_back(false);
 		}
@@ -284,7 +292,7 @@ void menu_handler::status_table(int selected)
 		items.push_back(str.str());
 	}
 	if (total_villages > map_.villages().size()) {
-		ERR_NG << "Logic error: map has " << map_.villages().size() << " villages but status table shows " << total_villages << " owned in total\n";
+		ERR_NG << "Logic error: map has " << map_.villages().size() << " villages but status table shows " << total_villages << " owned in total" << std::endl;
 	}
 
 	if (status_table_empty)
@@ -310,7 +318,7 @@ void menu_handler::status_table(int selected)
 	} // this will kill the dialog before scrolling
 
 	if (result >= 0)
-		gui_->scroll_to_leader(units_, selected+1);
+		gui_->scroll_to_leader(selected+1);
 	else if (result == gui::DIALOG_FORWARD)
 		scenario_settings_table(selected);
 }
@@ -404,7 +412,7 @@ void menu_handler::scenario_settings_table(int selected)
 		} // this will kill the dialog before scrolling
 
 		if (result >= 0)
-			gui_->scroll_to_leader(units_, selected+1);
+			gui_->scroll_to_leader(selected+1);
 		else if (result == gui::DIALOG_BACK)
 			status_table(selected);
 }
@@ -415,7 +423,7 @@ void menu_handler::save_map()
 	int res = 0;
 	int overwrite = 1;
 	do {
-		res = dialogs::show_file_chooser_dialog_save(*gui_, input_name, _("Save the Map As"));
+		res = dialogs::show_file_chooser_dialog_save(*gui_, input_name, _("Save the Map As"), ".map");
 		if (res == 0) {
 
 			if (file_exists(input_name)) {
@@ -554,7 +562,7 @@ void menu_handler::recruit(int side_num, const map_location &last_hex)
 	for(std::set<std::string>::const_iterator it = recruits.begin(); it != recruits.end(); ++it) {
 		const unit_type *type = unit_types.find(*it);
 		if (!type) {
-			ERR_NG << "could not find unit '" << *it << "'\n";
+			ERR_NG << "could not find unit '" << *it << "'" << std::endl;
 			return;
 		}
 
@@ -623,9 +631,9 @@ bool menu_handler::do_recruit(const std::string &name, int side_num,
 	const events::command_disabler disable_commands;
 
 	map_location loc = last_hex;
-	map_location recruited_from = map_location::null_location;
+	map_location recruited_from = map_location::null_location();
 	std::string msg;
-	{ wb::future_map_if_active future; //< start planned unit map scope if in planning mode
+	{ wb::future_map_if_active future; /* start planned unit map scope if in planning mode */
 		msg = actions::find_recruit_location(side_num, loc, recruited_from, name);
 	} // end planned unit map scope
 	if (!msg.empty()) {
@@ -638,7 +646,8 @@ bool menu_handler::do_recruit(const std::string &name, int side_num,
 		current_team.set_action_bonus_count(1 + current_team.action_bonus_count());
 
 		// Do the recruiting.
-		actions::recruit_unit(*u_type, side_num, loc, recruited_from);
+
+		synced_context::run_in_synced_context("recruit", replay_helper::get_recruit(u_type->id(), loc, recruited_from));
 		return true;
 	}
 	return false;
@@ -684,17 +693,27 @@ void menu_handler::recall(int side_num, const map_location &last_hex)
 		return;
 	}
 
-	int res = dialogs::recall_dialog(*gui_, recall_list_team, side_num, get_title_suffix(side_num));
-	if (res < 0) return;
+	int res = dialogs::recall_dialog(*gui_, recall_list_team, side_num, get_title_suffix(side_num), current_team.recall_cost());
+	int unit_cost = current_team.recall_cost();
+	if (res < 0) {
+		return;
+	}
+	// we need to check if unit has a specific recall cost
+	// if it does we use it elsewise we use the team.recall_cost()
+	// the magic number -1 is what it gets set to if the unit doesn't
+	// have a special recall_cost of its own.
+	else if(recall_list_team[res]->recall_cost() > -1) {
+		unit_cost = recall_list_team[res]->recall_cost();
+	}
 
 	int wb_gold = resources::whiteboard->get_spent_gold_for(side_num);
-	if (current_team.gold() - wb_gold < current_team.recall_cost()) {
+	if (current_team.gold() - wb_gold < unit_cost) {
 		utils::string_map i18n_symbols;
-		i18n_symbols["cost"] = lexical_cast<std::string>(current_team.recall_cost());
+		i18n_symbols["cost"] = lexical_cast<std::string>(unit_cost);
 		std::string msg = vngettext(
 			"You must have at least 1 gold piece to recall a unit",
-			"You must have at least $cost gold pieces to recall a unit",
-			current_team.recall_cost(), i18n_symbols);
+			"You must have at least $cost gold pieces to recall this unit",
+			unit_cost, i18n_symbols);
 		gui2::show_transient_message(gui_->video(), "", msg);
 		return;
 	}
@@ -703,7 +722,7 @@ void menu_handler::recall(int side_num, const map_location &last_hex)
 	const events::command_disabler disable_commands;
 
 	map_location recall_location = last_hex;
-	map_location recall_from = map_location::null_location;
+	map_location recall_from = map_location::null_location();
 	std::string err;
 	{ wb::future_map_if_active future; // future unit map removes invisible units from map, don't do this outside of planning mode
 		err = actions::find_recall_location(side_num, recall_location, recall_from, *(recall_list_team[res]));
@@ -714,9 +733,16 @@ void menu_handler::recall(int side_num, const map_location &last_hex)
 	}
 
 	if (!resources::whiteboard->save_recall(*recall_list_team[res], side_num, recall_location)) {
-		if ( !actions::recall_unit(recall_list_team[res]->id(), teams_[side_num-1],
-		                           recall_location, recall_from) ) {
-			ERR_NG << "menu_handler::recall(): Unit does not exist in the recall list.\n";
+		bool success = synced_context::run_in_synced_context("recall",
+			replay_helper::get_recall(recall_list_team[res]->id(), recall_location, recall_from),
+			true,
+			true,
+			true,
+			synced_context::ignore_error_function);
+
+		if(!success)
+		{
+			ERR_NG << "menu_handler::recall(): Unit does not exist in the recall list." << std::endl;
 		}
 	}
 }
@@ -753,14 +779,13 @@ void menu_handler::toggle_shroud_updates(int side_num)
 	if (!auto_shroud) update_shroud_now(side_num);
 
 	// Toggle the setting and record this.
-	recorder.add_auto_shroud(!auto_shroud);
-	current_team.set_auto_shroud_updates(!auto_shroud);
+	synced_context::run_in_synced_context("auto_shroud", replay_helper::get_auto_shroud(!auto_shroud));
 	resources::undo_stack->add_auto_shroud(!auto_shroud);
 }
 
 void menu_handler::update_shroud_now(int /* side_num */)
 {
-	resources::undo_stack->commit_vision();
+	synced_context::run_in_synced_context("update_shroud", replay_helper::get_update_shroud());
 }
 
 
@@ -785,7 +810,8 @@ namespace { // Helpers for menu_handler::end_turn()
 			if ( un->side() == side_num ) {
 				// @todo whiteboard should take into consideration units that have
 				// a planned move but can still plan more movement in the same turn
-				if ( actions::unit_can_move(*un) && !resources::whiteboard->unit_has_actions(&*un) )
+				if ( actions::unit_can_move(*un) && !un->user_end_turn()
+						&& !resources::whiteboard->unit_has_actions(&*un) )
 					return true;
 			}
 		}
@@ -799,8 +825,8 @@ namespace { // Helpers for menu_handler::end_turn()
 	{
 		for ( unit_map::const_iterator un = units.begin(); un != units.end(); ++un ) {
 			if ( un->side() == side_num ) {
-				if ( actions::unit_can_move(*un)  &&  !un->has_moved()  &&
-				     !resources::whiteboard->unit_has_actions(&*un) )
+				if ( actions::unit_can_move(*un)  &&  !un->has_moved()  && !un->user_end_turn()
+						&& !resources::whiteboard->unit_has_actions(&*un) )
 					return true;
 			}
 		}
@@ -839,7 +865,7 @@ bool menu_handler::end_turn(int side_num)
 	}
 	// Ask for confirmation if units still have all movement left.
 	else if ( preferences::green_confirm() && unmoved_units(side_num, units_) ) {
-		const int res = gui2::show_message((*gui_).video(), "", _("Some units have movement left. Do you really want to end your turn?"), gui2::tmessage::yes_no_buttons);
+		const int res = gui2::show_message((*gui_).video(), "", _("Some units have not moved. Do you really want to end your turn?"), gui2::tmessage::yes_no_buttons);
 		if(res == gui2::twindow::CANCEL) {
 			return false;
 		}
@@ -870,6 +896,18 @@ void menu_handler::unit_description()
 	}
 }
 
+void menu_handler::terrain_description(mouse_handler& mousehandler)
+{
+	const map_location& loc = mousehandler.get_last_hex();
+	if (map_.on_board(loc) == false) {
+		return;
+	}
+
+	const terrain_type& type = map_.get_terrain_info(loc);
+	//const terrain_type& info = resources::gameboard->map().get_terrain_info(terrain);
+	dialogs::show_terrain_description(type);
+}
+
 void menu_handler::rename_unit()
 {
 	const unit_map::iterator un = current_unit();
@@ -893,150 +931,193 @@ unit_map::iterator menu_handler::current_unit()
 {
 	const mouse_handler& mousehandler = resources::controller->get_mouse_handler_base();
 
-	unit_map::iterator res = find_visible_unit(mousehandler.get_last_hex(),
+	unit_map::iterator res = resources::gameboard->find_visible_unit(mousehandler.get_last_hex(),
 		teams_[gui_->viewing_team()]);
 	if(res != units_.end()) {
 		return res;
 	} else {
-		return find_visible_unit(mousehandler.get_selected_hex(),
+		return resources::gameboard->find_visible_unit(mousehandler.get_selected_hex(),
 			teams_[gui_->viewing_team()]);
 	}
 }
 
-void menu_handler::create_unit_2(mouse_handler& mousehandler)
-{
-	assert(gui_ != NULL);
-	//
-	// The unit creation dialog makes sure unit types
-	// are properly cached.
-	//
-	gui2::tunit_create create_dlg;
-	create_dlg.show(gui_->video());
+namespace { // Helpers for create_unit()
+	/// Allows a function to return both a type and a gender.
+	typedef std::pair<const unit_type *, unit_race::GENDER> type_and_gender;
 
-	if(create_dlg.no_choice()) {
-		return;
-	}
-
-	const std::string& ut_id = create_dlg.choice();
-	const unit_type *utp = unit_types.find(ut_id);
-	if (!utp) {
-		ERR_NG << "Create unit dialog returned nonexistent or unusable unit_type id '" << ut_id << "'.\n";
-		return;
-	}
-
-	const unit_type &ut = *utp;
-
-	unit_race::GENDER gender = create_dlg.gender();
-
-	// Do not try to set bad genders, may mess up l10n
-	// FIXME: is this actually necessary?
-	if(ut.genders().end() == std::find(ut.genders().begin(), ut.genders().end(), gender)) {
-		gender = ut.genders().front();
-	}
-
-	unit chosen(ut, 1, true, gender);
-	chosen.new_turn();
-
-	const map_location& loc = mousehandler.get_last_hex();
-	units_.replace(loc, chosen);
-
-	if(map_.is_village(loc)) {
-		actions::get_village(loc, chosen.side());
-	}
-
-	gui_->invalidate(loc);
-	gui_->invalidate_unit();
-}
-
-void menu_handler::create_unit(mouse_handler& mousehandler)
-{
-	/** @todo reenable after releasing 1.7.4; as-is causes memory corruption */
-	if(gui2::new_widgets) {
-		create_unit_2(mousehandler);
-		return;
-	}
-
-	std::vector<std::string> options;
-	static int last_selection = -1;
-	static bool random_gender = false;
-	std::vector<const unit_type*> unit_choices;
-	const std::string heading = std::string(1,HEADING_PREFIX) +
-								_("Race")      + COLUMN_SEPARATOR +
-								_("Type");
-	options.push_back(heading);
-
-	BOOST_FOREACH(const unit_type_data::unit_type_map::value_type &i, unit_types.types())
+	/**
+	 * Allows the user to select a type of unit, using GUI2.
+	 * (Intended for use when a unit is created in debug mode via hotkey or
+	 * context menu.)
+	 * @returns the selected type and gender. If this is canceled, the
+	 *          returned type is NULL.
+	 *
+	 * @todo Replace choose_unit() when complete.
+	 */
+	type_and_gender choose_unit_2(game_display& gui)
 	{
-		std::stringstream row;
+		//
+		// The unit creation dialog makes sure unit types
+		// are properly cached.
+		//
+		gui2::tunit_create create_dlg;
+		create_dlg.show(gui.video());
 
-		// Make sure the unit type was built for the data we need.
-		unit_types.build_unit_type(i.second, unit_type::HELP_INDEX);
-
-		row << i.second.race()->plural_name() << COLUMN_SEPARATOR;
-		row << i.second.type_name() << COLUMN_SEPARATOR;
-
-		options.push_back(row.str());
-		unit_choices.push_back(&i.second);
-	}
-
-	int choice = 0;
-	bool random_gender_choice = random_gender;
-	{
-		gui::dialog umenu(*gui_, _("Create Unit (Debug!)"), "", gui::OK_CANCEL);
-
-		umenu.add_option(
-			(formatter()<<_("Gender: ")<<_("gender^Random")).str(),
-			random_gender_choice,
-			gui::dialog::BUTTON_EXTRA
-		);
-
-		gui::menu::basic_sorter sorter;
-		sorter.set_alpha_sort(0).set_alpha_sort(1);
-		umenu.set_menu(options, &sorter);
-
-		gui::filter_textbox* filter = new gui::filter_textbox(gui_->video(),
-			_("Filter: "), options, options, 1, umenu, 200);
-		umenu.set_textbox(filter);
-
-		//sort by race then by type name
-		umenu.get_menu().sort_by(1);
-		umenu.get_menu().sort_by(0);
-		if (last_selection >= 0)
-			umenu.get_menu().move_selection(last_selection);
-		else
-			umenu.get_menu().reset_selection();
-
-		dialogs::unit_types_preview_pane unit_preview(unit_choices, filter, 1, dialogs::unit_types_preview_pane::SHOW_ALL);
-		umenu.add_pane(&unit_preview);
-		unit_preview.set_selection(umenu.get_menu().selection());
-
-		choice = umenu.show();
-		choice = filter->get_index(choice);
-		random_gender_choice = umenu.option_checked(0);
-	}
-
-	if (size_t(choice) < unit_choices.size()) {
-		last_selection = choice;
-		random_gender  = random_gender_choice;
-
-		const unit_type& type = *unit_choices[choice];
-		const unit_race::GENDER gender = random_gender ? unit_race::NUM_GENDERS :
-		                                                 type.genders().front();
-
-		unit chosen(type, 1, true, gender);
-		chosen.new_turn();
-
-		const map_location loc = mousehandler.get_last_hex();
-		units_.replace(loc, chosen);
-		unit_display::unit_recruited(loc);
-
-		if(map_.is_village(loc)) {
-			actions::get_village(loc, chosen.side());
+		if(create_dlg.no_choice()) {
+			// the static cast fixes http://connect.microsoft.com/VisualStudio/feedback/details/520043/
+			// c++11's nullptr would be a better solution as soon as we support it.
+			return type_and_gender(static_cast<const unit_type *>(NULL), unit_race::NUM_GENDERS);
 		}
 
-		gui_->invalidate(loc);
-		gui_->invalidate_unit();
+		const std::string& ut_id = create_dlg.choice();
+		const unit_type *utp = unit_types.find(ut_id);
+		if (!utp) {
+			ERR_NG << "Create unit dialog returned nonexistent or unusable unit_type id '" << ut_id << "'." << std::endl;
+			return type_and_gender(static_cast<const unit_type *>(NULL), unit_race::NUM_GENDERS);
+		}
+		const unit_type &ut = *utp;
+
+		unit_race::GENDER gender = create_dlg.gender();
+		// Do not try to set bad genders, may mess up l10n
+		/// @todo Is this actually necessary?
+		/// (Maybe create_dlg can enforce proper gender selection?)
+		if(ut.genders().end() == std::find(ut.genders().begin(), ut.genders().end(), gender)) {
+			gender = ut.genders().front();
+		}
+
+		return type_and_gender(utp, gender);
 	}
+
+	/**
+	 * Allows the user to select a type of unit.
+	 * (Intended for use when a unit is created in debug mode via hotkey or
+	 * context menu.)
+	 * @returns the selected type and gender. If this is canceled, the
+	 *          returned type is NULL.
+	 */
+	type_and_gender choose_unit(game_display& gui)
+	{
+		std::vector<std::string> options;
+		static int last_selection = -1;
+		static bool random_gender = false;
+		std::vector<const unit_type*> unit_choices;
+		const std::string heading = std::string(1,HEADING_PREFIX) +
+									_("Race")      + COLUMN_SEPARATOR +
+									_("Type");
+		options.push_back(heading);
+
+		BOOST_FOREACH(const unit_type_data::unit_type_map::value_type &i, unit_types.types())
+		{
+			std::stringstream row;
+
+			// Make sure the unit type was built for the data we need.
+			unit_types.build_unit_type(i.second, unit_type::HELP_INDEXED);
+
+			row << i.second.race()->plural_name() << COLUMN_SEPARATOR;
+			row << i.second.type_name() << COLUMN_SEPARATOR;
+
+			options.push_back(row.str());
+			unit_choices.push_back(&i.second);
+		}
+
+		int choice = 0;
+		bool random_gender_choice = random_gender;
+		{
+			gui::dialog umenu(gui, _("Create Unit (Debug!)"), "", gui::OK_CANCEL);
+
+			umenu.add_option(
+				(formatter()<<_("Gender: ")<<_("gender^Random")).str(),
+				random_gender_choice,
+				gui::dialog::BUTTON_EXTRA
+			);
+
+			gui::menu::basic_sorter sorter;
+			sorter.set_alpha_sort(0).set_alpha_sort(1);
+			umenu.set_menu(options, &sorter);
+
+			gui::filter_textbox* filter = new gui::filter_textbox(gui.video(),
+				_("Filter: "), options, options, 1, umenu, 200);
+			umenu.set_textbox(filter);
+
+			//sort by race then by type name
+			umenu.get_menu().sort_by(1);
+			umenu.get_menu().sort_by(0);
+			if (last_selection >= 0)
+				umenu.get_menu().move_selection(last_selection);
+			else
+				umenu.get_menu().reset_selection();
+
+			dialogs::unit_types_preview_pane unit_preview(unit_choices, filter, 1, dialogs::unit_types_preview_pane::SHOW_ALL);
+			umenu.add_pane(&unit_preview);
+			unit_preview.set_selection(umenu.get_menu().selection());
+
+			choice = umenu.show();
+			choice = filter->get_index(choice);
+			random_gender_choice = umenu.option_checked(0);
+		}
+
+		if (size_t(choice) < unit_choices.size()) {
+			last_selection = choice;
+			random_gender  = random_gender_choice;
+
+			return type_and_gender(unit_choices[choice],
+			                       random_gender ? unit_race::NUM_GENDERS :
+			                                       unit_choices[choice]->genders().front());
+		}
+		else
+			return type_and_gender(static_cast<const unit_type *>(NULL), unit_race::NUM_GENDERS);
+	}
+
+	/**
+	 * Creates a unit and places it on the board.
+	 * (Intended for use with any units created via debug mode.)
+	 */
+	void create_and_place(game_display& gui, const gamemap & map, unit_map & units,
+	                      const map_location & loc, const unit_type & u_type,
+	                      unit_race::GENDER gender = unit_race::NUM_GENDERS)
+	{
+		// Create the unit.
+		unit created(u_type, 1, true, gender);
+		created.new_turn();
+
+		// Add the unit to the board.
+		std::pair<unit_map::iterator, bool> add_result =
+			units.replace(loc, created);
+		gui.invalidate_unit();
+		unit_display::unit_recruited(loc);
+
+		// Village capture?
+		if ( map.is_village(loc) )
+			actions::get_village(loc, created.side());
+
+		// Update fog/shroud.
+		actions::shroud_clearer clearer;
+		clearer.clear_unit(loc, created);
+		clearer.fire_events();
+		if ( add_result.first.valid() ) // In case sighted events messed with the unit.
+			actions::actor_sighted(*add_result.first);
+	}
+
+}// Anonymous namespace
+
+
+/**
+ * Creates a unit (in debug mode via hotkey or context menu).
+ */
+void menu_handler::create_unit(mouse_handler& mousehandler)
+{
+	// Save the current mouse location before popping up the choice menu (which
+	// gives time for the mouse to move, changing the location).
+	const map_location destination = mousehandler.get_last_hex();
+	assert(gui_ != NULL);
+
+	// Let the user select the kind of unit to create.
+	type_and_gender selection = gui2::new_widgets ? choose_unit_2(*gui_) :
+	                                                choose_unit(*gui_);
+	if ( selection.first != NULL )
+		// Make it so.
+		create_and_place(*gui_, map_, units_, destination,
+		                 *selection.first, selection.second);
 }
 
 void menu_handler::change_side(mouse_handler& mousehandler)
@@ -1081,8 +1162,11 @@ void menu_handler::kill_unit(mouse_handler& mousehandler)
 		}
 		resources::screen->redraw_minimap();
 		game_events::fire("die", loc, loc);
-		resources::units->erase(i);
+		if (i.valid()) {
+			resources::units->erase(i);
+		}
 		actions::recalculate_fog(dying_side);
+		resources::controller->check_victory();
 	}
 }
 
@@ -1104,12 +1188,6 @@ void menu_handler::label_terrain(mouse_handler& mousehandler, bool team_only)
 			team_name = gui_->labels().team_name();
 		} else {
 			color = int_to_color(team::get_side_rgb(gui_->viewing_side()));
-		}
-		const std::string& old_team_name = old_label ? old_label->team_name() : "";
-		// remove the old label if we changed the team_name
-		if (team_only == (old_team_name == "")) {
-			const terrain_label* old = gui_->labels().set_label(loc, "", old_team_name, color);
-			if (old) recorder.add_label(old);
 		}
 		const terrain_label* res = gui_->labels().set_label(loc, label, team_name, color);
 		if (res)
@@ -1153,7 +1231,10 @@ void menu_handler::move_unit_to_loc(const unit_map::iterator &ui,
 
 	gui_->set_route(&route);
 	gui_->unhighlight_reach();
-	actions::move_unit(route.steps, &recorder, resources::undo_stack, continue_move);
+	{
+		LOG_NG << "move_unit_to_loc " << route.steps.front() << " to " << route.steps.back() << "\n";
+		actions::move_unit_and_record(route.steps, resources::undo_stack, continue_move);
+	}
 	gui_->set_route(NULL);
 	gui_->invalidate_game_status();
 }
@@ -1222,8 +1303,12 @@ void menu_handler::execute_gotos(mouse_handler &mousehandler, int side)
 			}
 
 			gui_->set_route(&route);
-			int moves = actions::move_unit(route.steps, &recorder, resources::undo_stack);
-			change = moves > 0;
+
+			{
+				LOG_NG << "execute goto from " << route.steps.front() << " to " << route.steps.back() << "\n";
+				int moves = actions::move_unit_and_record(route.steps, resources::undo_stack);
+				change = moves > 0;
+			}
 
 			if (change) {
 				// something changed, resume waiting blocker (maybe one can move now)
@@ -1860,7 +1945,7 @@ class console_handler : public map_command_handler<console_handler>, private cha
 		using chmap::get_commands_list;
 
 	protected:
-		//chat_command_handler's init_map() and hanlers will end up calling these.
+		//chat_command_handler's init_map() and handlers will end up calling these.
 		//this makes sure the commands end up in our map
 		virtual void register_command(const std::string& cmd,
 			chat_command_handler::command_handler h, const std::string& help="",
@@ -1899,8 +1984,10 @@ class console_handler : public map_command_handler<console_handler>, private cha
 
 		void do_refresh();
 		void do_droid();
+		void do_idle();
 		void do_theme();
 		void do_control();
+		void do_controller();
 		void do_clear();
 		void do_sunset();
 		void do_foreground();
@@ -1978,9 +2065,13 @@ class console_handler : public map_command_handler<console_handler>, private cha
 				_("Refresh gui."));
 			register_command("droid", &console_handler::do_droid,
 				_("Switch a side to/from AI control."), _("do not translate the on/off^[<side> [on/off]]"));
+			register_command("idle", &console_handler::do_idle,
+				_("Switch a side to/from idle state."), _("do not translate the on/off^[<side> [on/off]]"));
 			register_command("theme", &console_handler::do_theme);
 			register_command("control", &console_handler::do_control,
 				_("Assign control of a side to a different player or observer."), _("<side> <nickname>"), "N");
+			register_command("controller", &console_handler::do_controller,
+				_("Query the controller status of a side."), _("<side>"));
 			register_command("clear", &console_handler::do_clear,
 				_("Clear chat history."));
 			register_command("sunset", &console_handler::do_sunset,
@@ -2105,16 +2196,16 @@ void chat_handler::change_logging(const std::string& data) {
 	const std::string level(data.begin(),j);
 	const std::string domain(j+1,data.end());
 	int severity;
-	if (level == "error") severity = 0;
-	else if (level == "warning") severity = 1;
-	else if (level == "info") severity = 2;
-	else if (level == "debug") severity = 3;
+	if (level == "error") severity = lg::err.get_severity();
+	else if (level == "warning") severity = lg::warn.get_severity();
+	else if (level == "info") severity = lg::info.get_severity();
+	else if (level == "debug") severity = lg::debug.get_severity();
 	else {
 		utils::string_map symbols;
 		symbols["level"] = level;
 		const std::string& msg =
 				vgettext("Unknown debug level: '$level'.", symbols);
-		ERR_NG << msg << "\n";
+		ERR_NG << msg << std::endl;
 		add_chat_message(time(NULL), _("error"), 0, msg);
 		return;
 	}
@@ -2123,7 +2214,7 @@ void chat_handler::change_logging(const std::string& data) {
 		symbols["domain"] = domain;
 		const std::string& msg =
 				vgettext("Unknown debug domain: '$domain'.", symbols);
-		ERR_NG << msg << "\n";
+		ERR_NG << msg << std::endl;
 		add_chat_message(time(NULL), _("error"), 0, msg);
 		return;
 	} else {
@@ -2550,9 +2641,9 @@ void menu_handler::do_search(const std::string& new_search)
 		//Not found, inform the player
 		utils::string_map symbols;
 		symbols["search"] = last_search_;
-		const std::string msg = vgettext("Couldn't find label or unit "
-				"containing the string '$search'.", symbols);
-		gui::dialog(*gui_,"",msg).show();
+		const std::string msg = vgettext("Could not find label or unit "
+				"containing the string ‘$search’.", symbols);
+		gui2::show_message(gui_->video(), "", msg, gui2::tmessage::auto_close);
 	}
 }
 
@@ -2596,10 +2687,10 @@ void console_handler::do_droid() {
 		symbols["side"] = lexical_cast<std::string>(side);
 		command_failed(vgettext("Can't droid networked side: '$side'.", symbols));
 		return;
-	} else if (menu_handler_.teams_[side - 1].is_human() && action != " off") {
+	} else if ((menu_handler_.teams_[side - 1].is_human() || menu_handler_.teams_[side - 1].is_idle()) && action != " off") {
 		//this is our side, so give it to AI
-		menu_handler_.teams_[side - 1].make_human_ai();
-		menu_handler_.change_controller(lexical_cast<std::string>(side),"human_ai");
+		menu_handler_.teams_[side - 1].make_ai();
+		menu_handler_.change_controller(lexical_cast<std::string>(side),"ai");
 		if(team_num_ == side) {
 			//if it is our turn at the moment, we have to indicate to the
 			//play_controller, that we are no longer in control
@@ -2608,6 +2699,49 @@ void console_handler::do_droid() {
 	} else if (menu_handler_.teams_[side - 1].is_ai() && action != " on") {
 		menu_handler_.teams_[side - 1].make_human();
 		menu_handler_.change_controller(lexical_cast<std::string>(side),"human");
+	}
+	menu_handler_.textbox_info_.close(*menu_handler_.gui_);
+}
+
+void console_handler::do_idle() {
+	// :idle [<side> [on/off]]
+	const std::string side_s = get_arg(1);
+	const std::string action = get_arg(2);
+	// default to the current side if empty
+	const unsigned int side = side_s.empty() ?
+		team_num_ : lexical_cast_default<unsigned int>(side_s);
+
+	if (side < 1 || side > menu_handler_.teams_.size()) {
+		utils::string_map symbols;
+		symbols["side"] = side_s;
+		command_failed(vgettext("Can't idle invalid side: '$side'.", symbols));
+		return;
+	} else if (menu_handler_.teams_[side - 1].is_network()) {
+		utils::string_map symbols;
+		symbols["side"] = lexical_cast<std::string>(side);
+		command_failed(vgettext("Can't droid networked side: '$side'.", symbols));
+		return;
+	} else if (menu_handler_.teams_[side - 1].is_human() && action != " off") {
+		//this is our side, so give it to idle
+		menu_handler_.teams_[side - 1].make_idle();
+		menu_handler_.change_controller(lexical_cast<std::string>(side),"idle");
+		if(team_num_ == side) {
+			//if it is our turn at the moment, we have to indicate to the
+			//play_controller, that we are no longer in control
+			throw end_turn_exception(side);
+		}
+	} else if (menu_handler_.teams_[side - 1].is_ai() && action != " off") {
+		//this is our side, so give it to idle, without end turn exception. tell network it is human
+		menu_handler_.teams_[side - 1].make_idle();
+		menu_handler_.change_controller(lexical_cast<std::string>(side),"human");
+	} else if (menu_handler_.teams_[side - 1].is_idle() && action != " on") {
+		menu_handler_.teams_[side - 1].make_human();
+		menu_handler_.change_controller(lexical_cast<std::string>(side),"human");
+		if(team_num_ == side) {
+			//if it is our turn at the moment, we have to indicate to the
+			//play_controller, that idle should no longer be in control
+			throw end_turn_exception(side);
+		}
 	}
 	menu_handler_.textbox_info_.close(*menu_handler_.gui_);
 }
@@ -2644,6 +2778,27 @@ void console_handler::do_control() {
 	menu_handler_.request_control_change(side_num,player);
 	menu_handler_.textbox_info_.close(*(menu_handler_.gui_));
 }
+void console_handler::do_controller()
+{
+	const std::string side = get_arg(1);
+	unsigned int side_num;
+	try {
+		side_num = lexical_cast<unsigned int>(side);
+	} catch(bad_lexical_cast&) {
+		utils::string_map symbols;
+		symbols["side"] = side;
+		command_failed(vgettext("Can't query control of invalid side: '$side'.", symbols));
+		return;
+	}
+	if (side_num < 1 || side_num > menu_handler_.teams_.size()) {
+		utils::string_map symbols;
+		symbols["side"] = side;
+		command_failed(vgettext("Can't query control of out-of-bounds side: '$side'.",	symbols));
+		return;
+	}
+	print(get_cmd(), team::CONTROLLER_to_string (menu_handler_.teams_[side_num - 1].controller()));
+}
+
 void console_handler::do_clear() {
 	menu_handler_.gui_->clear_chat_messages();
 }
@@ -2698,14 +2853,14 @@ void console_handler::do_layers() {
 		std::ostringstream str;
 
 		int tz = image::tile_size;
-		SDL_Rect r = create_rect(0,0,tz,tz);
+		SDL_Rect r = sdl::create_rect(0,0,tz,tz);
 
 		surface surf = image::get_image(img.get_filename());
 
 		// calculate which part of the image the terrain engine uses
 		if(loc_cut.valid()) {
 			// copied from image.cpp : load_image_sub_file()
-			r = create_rect(
+			r = sdl::create_rect(
 					((tz*3) / 4) * loc_cut.x
 					, tz * loc_cut.y + (tz / 2) * (loc_cut.x % 2)
 					, tz, tz);
@@ -2722,7 +2877,7 @@ void console_handler::do_layers() {
 
 		// cut and mask the image
 		// ~CROP and ~BLIT have limitations, we do some math to avoid them
-		SDL_Rect r2 = intersect_rects(r, create_rect(0,0,surf->w,surf->h));
+		SDL_Rect r2 = sdl::intersect_rects(r, sdl::create_rect(0,0,surf->w,surf->h));
 		if(r2.w > 0 && r2.h > 0) {
 			str << "~BLIT("
 					<< name << "~CROP("
@@ -2764,10 +2919,7 @@ void console_handler::do_benchmark() {
 	menu_handler_.gui_->toggle_benchmark();
 }
 void console_handler::do_save() {
-	savegame::ingame_savegame save(menu_handler_.gamestate_, *menu_handler_.gui_,
-	                               resources::controller->to_config(),
-	                               preferences::compress_saves());
-	save.save_game_automatic(menu_handler_.gui_->video(), true, get_data());
+	resources::controller->do_consolesave(get_data());
 }
 void console_handler::do_save_quit() {
 	do_save();
@@ -2810,7 +2962,7 @@ void console_handler::do_choose_level() {
 	}
 	// find scenarios of multiplayer campaigns
 	// (assumes that scenarios are ordered properly in the game_config)
-	std::string& scenario = menu_handler_.gamestate_.mp_settings().mp_scenario;
+	std::string scenario = resources::mp_settings->mp_scenario;
 	BOOST_FOREACH(const config &mp, menu_handler_.game_config_.child_range("multiplayer"))
 	{
 		if (mp["id"] == scenario)
@@ -2886,7 +3038,7 @@ void console_handler::do_nodebug() {
 }
 void console_handler::do_lua() {
 	resources::lua_kernel->run(get_data().c_str());
-	game_events::commit();
+	game_events::flush_messages();
 }
 
 void console_handler::do_unsafe_lua()
@@ -2942,7 +3094,7 @@ void console_handler::do_set_var() {
 	}
 }
 void console_handler::do_show_var() {
-	gui2::show_transient_message((*menu_handler_.gui_).video(),"",resources::gamedata->get_variable(get_data()));
+	gui2::show_transient_message((*menu_handler_.gui_).video(),"",resources::gamedata->get_variable_const(get_data()));
 }
 
 
@@ -2986,18 +3138,29 @@ void console_handler::do_unit() {
 	// But someday the code ought to be
 	// changed to allow general string
 	// alignments for UMC.
-	if (name == "alignment" && (value != "lawful" && value != "neutral" && value != "chaotic" && value != "liminal")) {
-		utils::string_map symbols;
-		symbols["alignment"] = get_arg(1);
-		command_failed(VGETTEXT("Invalid alignment: '$alignment',"
-			" needs to be one of lawful, neutral, chaotic, or liminal.", symbols));
-		return;
+	if (name == "alignment") { // && (value != "lawful" && value != "neutral" && value != "chaotic" && value != "liminal")) {
+		std::stringstream ss(value);
+		unit_type::ALIGNMENT alignment = unit_type::ALIGNMENT();
+		ss >> alignment;
+		if (!ss) {
+			utils::string_map symbols;
+			symbols["alignment"] = get_arg(1);
+			command_failed(VGETTEXT("Invalid alignment: '$alignment',"
+				" needs to be one of lawful, neutral, chaotic, or liminal.", symbols));
+			return;
+		}
 	}
 	if (name == "advances" ){
+		if(synced_context::get_synced_state() == synced_context::SYNCED)
+		{
+			command_failed("unit advances=n doesn't work while another action is executed.");
+			return;
+		}
 		int int_value = lexical_cast<int>(value);
 		for (int levels=0; levels<int_value; levels++) {
 			i->set_experience(i->max_experience());
-			dialogs::advance_unit(loc);
+
+			advance_unit_at(loc,true);
 			i = menu_handler_.units_.find(loc);
 			if (!i.valid()) {
 				break;
@@ -3050,6 +3213,9 @@ void console_handler::do_undiscover() {
 		preferences::encountered_units().clear();
 	}
 }
+/**
+ * Implements the (debug mode) console command that creates a unit.
+ */
 void console_handler::do_create() {
 	const mouse_handler& mousehandler = resources::controller->get_mouse_handler_base();
 	const map_location &loc = mousehandler.get_last_hex();
@@ -3060,14 +3226,9 @@ void console_handler::do_create() {
 			return;
 		}
 
-		menu_handler_.units_.erase(loc);
-
-		unit created(*ut, 1, true);
-		created.new_turn();
-
-		menu_handler_.units_.add(loc, created);
-		menu_handler_.gui_->invalidate(loc);
-		menu_handler_.gui_->invalidate_unit();
+		// Create the unit.
+		create_and_place(*menu_handler_.gui_, menu_handler_.map_,
+		                 menu_handler_.units_, loc, *ut);
 	} else {
 		command_failed(_("Invalid location"));
 	}
@@ -3141,6 +3302,18 @@ void menu_handler::request_control_change ( int side_num, const std::string& pla
 		if (player == preferences::login())
 			return;
 		change_side_controller(side,player);
+	} else if (teams_[side_num - 1].is_idle()) { //if this is our side and it is idle, make human and throw an end turn exception
+		LOG_NG << " *** Got an idle side with requested control change " << std::endl;
+		teams_[side_num - 1].make_human();
+		change_controller(lexical_cast<std::string>(side_num),"human");
+
+		if (player == preferences::login()) {
+			LOG_NG << " *** It's us, throwing end turn exception " << std::endl;
+		} else {
+			LOG_NG << " *** It's not us, changing sides now as usual, then throwing end_turn " << std::endl;
+			change_side_controller(side,player);
+		}
+		throw end_turn_exception(side_num);
 	} else {
 		//it is not our side, the server will decide if we can change the
 		//controller (that is if we are host of the game)

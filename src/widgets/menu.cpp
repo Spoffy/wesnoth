@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #include "language.hpp"
 #include "image.hpp"
 #include "marked-up_text.hpp"
+#include "sdl/rect.hpp"
 #include "sound.hpp"
 #include "video.hpp"
 #include "wml_separators.hpp"
@@ -381,6 +382,16 @@ void menu::set_inner_location(SDL_Rect const &rect)
 	bg_register(rect);
 }
 
+const menu::item& menu::get_item(int index) const
+{
+	return items_[index];
+}
+
+const menu::item& menu::get_selected_item() const
+{
+	return items_[selection()];
+}
+
 void menu::change_item(int pos1, int pos2,const std::string& str)
 {
 	if(pos1 < 0 || pos1 >= int(item_pos_.size()) ||
@@ -660,8 +671,8 @@ void menu::handle_event(const SDL_Event& event)
 			x = event.button.x;
 			y = event.button.y;
 		} else {
-			x = reinterpret_cast<long>(event.user.data1);
-			y = reinterpret_cast<long>(event.user.data2);
+			x = reinterpret_cast<size_t>(event.user.data1);
+			y = reinterpret_cast<size_t>(event.user.data2);
 		}
 
 		const int item = hit(x,y);
@@ -840,7 +851,7 @@ void menu::style::draw_row_bg(menu& menu_ref, const size_t /*row_index*/, const 
 		break;
 	}
 
-	draw_solid_tinted_rectangle(rect.x, rect.y, rect.w, rect.h,
+	sdl::draw_solid_tinted_rectangle(rect.x, rect.y, rect.w, rect.h,
 				    (rgb&0xff0000) >> 16,(rgb&0xff00) >> 8,rgb&0xff,alpha,
 				    menu_ref.video().getSurface());
 }
@@ -923,8 +934,12 @@ void menu::draw_row(const size_t row_index, const SDL_Rect& rect, ROW_TYPE type)
 
 		if(lang_rtl)
 			xpos -= widths[i];
-		if(type == HEADING_ROW && highlight_heading_ == int(i)) {
-			draw_solid_tinted_rectangle(xpos,rect.y,widths[i],rect.h,255,255,255,0.3,video().getSurface());
+		if(type == HEADING_ROW) {
+			if(highlight_heading_ == int(i)) {
+				sdl::draw_solid_tinted_rectangle(xpos,rect.y,widths[i],rect.h,255,255,255,0.3,video().getSurface());
+			} else if(sortby_ == int(i)) {
+				sdl::draw_solid_tinted_rectangle(xpos,rect.y,widths[i],rect.h,255,255,255,0.1,video().getSurface());
+			}
 		}
 
 		const int last_x = xpos;
@@ -969,13 +984,15 @@ void menu::draw_row(const size_t row_index, const SDL_Rect& rect, ROW_TYPE type)
 				}
 				const SDL_Rect& text_size = font::text_area(str,style_->get_font_size());
 				const size_t y = rect.y + (rect.h - text_size.h)/2;
-				font::draw_text(&video(),column,style_->get_font_size(),font::NORMAL_COLOR,to_show,xpos,y);
+				const size_t padding = 2;
+				font::draw_text(&video(),column,style_->get_font_size(),font::NORMAL_COLOR,to_show,
+					(type == HEADING_ROW ? xpos+padding : xpos), y);
 
 				if(type == HEADING_ROW && sortby_ == int(i)) {
 					const surface sort_img = image::get_image(sortreversed_ ? "buttons/sliders/slider_arrow_blue.png" :
 					                                   "buttons/sliders/slider_arrow_blue.png~ROTATE(180)");
 					if(sort_img != NULL && sort_img->w <= widths[i] && sort_img->h <= rect.h) {
-						const size_t sort_x = xpos + widths[i] - sort_img->w;
+						const size_t sort_x = xpos + widths[i] - sort_img->w - padding;
 						const size_t sort_y = rect.y + rect.h/2 - sort_img->h/2;
 						video().blit_surface(sort_x,sort_y,sort_img);
 					}
@@ -1107,7 +1124,7 @@ SDL_Rect menu::get_item_rect_internal(size_t item) const
 	unsigned int first_item_on_screen = get_position();
 	if (item < first_item_on_screen ||
 	    item >= first_item_on_screen + max_items_onscreen()) {
-		return empty_rect;
+		return sdl::empty_rect;
 	}
 
 	const std::map<int,SDL_Rect>::const_iterator i = itemRects_.find(item);
@@ -1122,18 +1139,18 @@ SDL_Rect menu::get_item_rect_internal(size_t item) const
 		y = prev.y + prev.h;
 	}
 
-	SDL_Rect res = create_rect(loc.x, y, loc.w, get_item_height(item));
+	SDL_Rect res = sdl::create_rect(loc.x, y, loc.w, get_item_height(item));
 
 	SDL_Rect const &screen_area = ::screen_area();
 
 	if(res.x > screen_area.w) {
-		return empty_rect;
+		return sdl::empty_rect;
 	} else if(res.x + res.w > screen_area.w) {
 		res.w = screen_area.w - res.x;
 	}
 
 	if(res.y > screen_area.h) {
-		return empty_rect;
+		return sdl::empty_rect;
 	} else if(res.y + res.h > screen_area.h) {
 		res.h = screen_area.h - res.y;
 	}

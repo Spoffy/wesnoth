@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2013 by Maxim Biro <nurupo.contributions@gmail.com>
+   Copyright (C) 2013 - 2014 by Maxim Biro <nurupo.contributions@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -18,7 +18,9 @@
 #include <SDL.h>
 #include <string>
 //forces to call Unicode winapi functions instead of ASCII (default)
+#ifndef UNICODE
 #define UNICODE
+#endif
 //defines that mingw misses
 #ifndef _WIN32_IE
     #define _WIN32_IE 0x0600 //specifying target platform to be Windows XP and higher
@@ -33,8 +35,8 @@
     #define NIN_BALLOONUSERCLICK (WM_USER + 5)
 #endif
 // ShellAPI.h should be included after Windows.h only!
-#include <Windows.h>
-#include <ShellAPI.h>
+#include <windows.h>
+#include <shellapi.h>
 
 class windows_tray_notification {
 public:
@@ -71,9 +73,9 @@ private:
 	static void destroy_tray_icon();
 	static bool set_tray_message(const std::string& title, const std::string& message);
 	static void adjust_length(std::string& title, std::string& message);
-	static HWND get_window_hanlde();
+	static HWND get_window_handle();
 	static void switch_to_wesnoth_window();
-	static std::wstring string_to_wstring(const std::string& string);
+	static std::wstring string_to_wstring(const std::string& string, size_t maxlength);
 
 	explicit windows_tray_notification();
 	windows_tray_notification(const windows_tray_notification& w);

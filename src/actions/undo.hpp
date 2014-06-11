@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -75,6 +75,7 @@ class undo_list : boost::noncopyable {
 
 
 		/// Creates an undo_action based on a config.
+		/// Throws bad_lexical_cast if it cannot parse the config properly.
 		static undo_action * create(const config & cfg, const std::string & tag);
 		/// Writes this into the provided config.
 		virtual void write(config & cfg) const = 0;
@@ -86,7 +87,14 @@ class undo_list : boost::noncopyable {
 		/// @return true on success; false on an error.
 		virtual bool redo(int side) = 0;
 
+		config& get_replay_data() { return replay_data; }
+
 		// Data:
+		/// the replay data to do this action, this is only !empty() when this action is on the redo stack
+		/// we need this because we dont recalculate the redos like they would be in real game,
+		/// but even undoable comands can have "dependent" (= user_input) commands, which we save here.
+		config replay_data;
+
 		/// The hexes occupied by the affected unit during this action.
 		std::vector<map_location> route;
 		/// A record of the affected unit's ability to see.
@@ -137,7 +145,7 @@ public:
 	/// Clears the stack of undoable (and redoable) actions.
 	void clear();
 	/// Updates fog/shroud based on the undo stack, then updates stack as needed.
-	void commit_vision(bool is_replay=false);
+	void commit_vision();
 	/// Performs some initializations and error checks when starting a new
 	/// side-turn.
 	void new_side_turn(int side);

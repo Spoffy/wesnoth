@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2008 - 2013 by Tomasz Sniatowski <kailoran@gmail.com>
+   Copyright (C) 2008 - 2014 by Tomasz Sniatowski <kailoran@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -145,20 +145,18 @@ bool mouse_action::has_ctrl_modifier() const
 void mouse_action::set_terrain_mouse_overlay(editor_display& disp, const t_translation::t_terrain & fg,
 		const t_translation::t_terrain & bg)
 {
-	surface image_fg(image::get_image("terrain/"
-		+ disp.get_map().get_terrain_info(fg).editor_image() + ".png"));
-	surface image_bg(image::get_image("terrain/"
-		+ disp.get_map().get_terrain_info(bg).editor_image() + ".png"));
+	surface image_fg(image::get_image(disp.get_map().get_terrain_info(fg).editor_image()));
+	surface image_bg(image::get_image(disp.get_map().get_terrain_info(bg).editor_image()));
 
 	if (image_fg == NULL || image_bg == NULL) {
-		ERR_ED << "Missing terrain icon\n";
+		ERR_ED << "Missing terrain icon" << std::endl;
 		disp.set_mouseover_hex_overlay(NULL);
 		return;
 	}
 
 	// Create a transparent surface of the right size.
 	surface image = create_compatible_surface(image_fg, image_fg->w, image_fg->h);
-	sdl_fill_rect(image,NULL,SDL_MapRGBA(image->format,0,0,0, 0));
+	sdl::fill_rect(image,NULL,SDL_MapRGBA(image->format,0,0,0, 0));
 
 	// For efficiency the size of the tile is cached.
 	// We assume all tiles are of the same size.
@@ -176,12 +174,12 @@ void mouse_action::set_terrain_mouse_overlay(editor_display& disp, const t_trans
 
 	// Blit left side
 	image_fg = scale_surface(image_fg, new_size, new_size);
-	SDL_Rect rcDestLeft = create_rect(offset, quarter_size, 0, 0);
+	SDL_Rect rcDestLeft = sdl::create_rect(offset, quarter_size, 0, 0);
 	sdl_blit ( image_fg, NULL, image, &rcDestLeft );
 
 	// Blit right side
 	image_bg = scale_surface(image_bg, new_size, new_size);
-	SDL_Rect rcDestRight = create_rect(half_size, quarter_size, 0, 0);
+	SDL_Rect rcDestRight = sdl::create_rect(half_size, quarter_size, 0, 0);
 	sdl_blit ( image_bg, NULL, image, &rcDestRight );
 
 	//apply mask so the overlay is contained within the mouseover hex
@@ -335,7 +333,7 @@ void mouse_action_paste::set_mouse_overlay(editor_display& disp)
 	//TODO avoid hardcoded hex field size
 	surface image = create_neutral_surface(72,72);
 
-	SDL_Rect r = create_rect(6, 6, 0, 0);
+	SDL_Rect r = sdl::create_rect(6, 6, 0, 0);
 	blit_surface(image60, NULL, image, &r);
 
 	Uint8 alpha = 196;
@@ -360,7 +358,7 @@ editor_action* mouse_action_fill::click_left(editor_display& disp, int x, int y)
 		terrain_palette_.select_fg_item(disp.map().get_terrain(hex));
 		return NULL;
 	} else {
-		///@TODO only take the base terrain into account when searching for contiguous terrain when painting base only
+		/** @todo only take the base terrain into account when searching for contiguous terrain when painting base only */
 		//or use a different key modifier for that
 		editor_action_fill* a = new editor_action_fill(hex, terrain_palette_.selected_fg_item(),
 				has_shift_modifier());
@@ -375,7 +373,7 @@ editor_action* mouse_action_fill::click_right(editor_display& disp, int x, int y
 		terrain_palette_.select_bg_item(disp.map().get_terrain(hex));
 		return NULL;
 	} else {
-		///@TODO only take the base terrain into account when searching for contiguous terrain when painting base only
+		/** @todo only take the base terrain into account when searching for contiguous terrain when painting base only */
 		//or use a different key modifier for that
 		editor_action_fill* a = new editor_action_fill(hex, terrain_palette_.selected_bg_item(),
 				has_shift_modifier());
@@ -458,7 +456,7 @@ void mouse_action_starting_position::set_mouse_overlay(editor_display& disp)
 	//TODO avoid hardcoded hex field size
 	surface image = create_neutral_surface(72,72);
 
-	SDL_Rect r = create_rect(6, 6, 0, 0);
+	SDL_Rect r = sdl::create_rect(6, 6, 0, 0);
 	blit_surface(image60, NULL, image, &r);
 
 	Uint8 alpha = 196;

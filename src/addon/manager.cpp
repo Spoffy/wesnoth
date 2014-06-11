@@ -1,6 +1,6 @@
 /*
    Copyright (C) 2003 - 2008 by David White <dave@whitevine.net>
-                 2008 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+                 2008 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -90,14 +90,37 @@ bool have_addon_pbl_info(const std::string& addon_name)
 
 void get_addon_pbl_info(const std::string& addon_name, config& cfg)
 {
-	scoped_istream stream = istream_file(get_pbl_file_path(addon_name));
-	read(cfg, *stream);
+	const std::string& pbl_path = get_pbl_file_path(addon_name);
+	try {
+		scoped_istream stream = istream_file(pbl_path);
+		read(cfg, *stream);
+	} catch(const config::error& e) {
+		throw invalid_pbl_exception(pbl_path, e.message);
+	}
 }
 
 void set_addon_pbl_info(const std::string& addon_name, const config& cfg)
 {
 	scoped_ostream stream = ostream_file(get_pbl_file_path(addon_name));
 	write(*stream, cfg);
+}
+
+bool have_addon_install_info(const std::string& addon_name)
+{
+	return file_exists(get_info_file_path(addon_name));
+}
+
+void get_addon_install_info(const std::string& addon_name, config& cfg)
+{
+	const std::string& info_path = get_info_file_path(addon_name);
+	scoped_istream stream = istream_file(info_path);
+	try {
+		read(cfg, *stream);
+	} catch(const config::error& e) {
+		ERR_CFG << "Failed to read add-on installation information for '"
+				<< addon_name << "' from " << info_path << ":\n"
+				<< e.message << std::endl;
+	}
 }
 
 bool remove_local_addon(const std::string& addon)
@@ -113,12 +136,12 @@ bool remove_local_addon(const std::string& addon)
 	}
 
 	if(file_exists(addon_dir + ".cfg") && !delete_directory(addon_dir + ".cfg", true)) {
-		ERR_CFG << "Failed to delete directory/file: " << addon_dir << ".cfg\n";
+		ERR_CFG << "Failed to delete directory/file: " << addon_dir << ".cfg" << std::endl;
 		ret = false;
 	}
 
 	if(!ret) {
-		ERR_CFG << "removal of add-on " << addon << " failed!\n";
+		ERR_CFG << "removal of add-on " << addon << " failed!" << std::endl;
 	}
 
 	return ret;
@@ -377,10 +400,8 @@ void refresh_addon_version_info_cache()
 		const std::string& info_file = addon_info_files[i];
 
 		if(file_exists(info_file)) {
-			scoped_istream stream = istream_file(info_file);
-
 			config cfg;
-			read(cfg, *stream);
+			get_addon_install_info(addon, cfg);
 
 			const config& info_cfg = cfg.child("info");
 			if(!info_cfg) {
@@ -393,7 +414,7 @@ void refresh_addon_version_info_cache()
 			version_info_cache[addon] = version;
 		} else if (!have_addon_pbl_info(addon) && !have_addon_in_vcs_tree(addon)) {
 			// Don't print the warning if the user is clearly the author
-			WRN_CFG << "add-on '" << addon << "' has no _info.cfg; cannot read version info\n";
+			WRN_CFG << "add-on '" << addon << "' has no _info.cfg; cannot read version info" << std::endl;
 		}
 	}
 }

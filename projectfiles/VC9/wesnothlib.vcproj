@@ -108,7 +108,7 @@
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="../../src"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
+				PreprocessorDefinitions="WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				OpenMP="true"
@@ -236,7 +236,7 @@
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
 				AdditionalIncludeDirectories="../../src"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
+				PreprocessorDefinitions="WIN32;_WINDOWS;_CRT_SECURE_NO_WARNINGS;HAVE_PYTHON;USE_GZIP;NO_HAVE_FRIBIDI;NOMINMAX;_SCL_SECURE_NO_WARNINGS"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				OpenMP="true"
@@ -349,6 +349,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\src\serialization\unicode.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\src\serialization\unicode.hpp"
+				>
+			</File>
+			<File
 				RelativePath="..\..\src\serialization\validator.cpp"
 				>
 			</File>
@@ -371,6 +379,14 @@
 		</File>
 		<File
 			RelativePath="..\..\src\config.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\config_assign.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\config_assign.hpp"
 			>
 		</File>
 		<File
@@ -431,6 +447,14 @@
 		</File>
 		<File
 			RelativePath="..\..\src\network_worker.hpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\simple_rng.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\src\simple_rng.hpp"
 			>
 		</File>
 		<File

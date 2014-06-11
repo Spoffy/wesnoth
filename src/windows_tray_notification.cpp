@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2013 by Maxim Biro <nurupo.contributions@gmail.com>
+   Copyright (C) 2013 - 2014 by Maxim Biro <nurupo.contributions@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -16,7 +16,9 @@
 
 #include <SDL_syswm.h>
 
+#include "gettext.hpp"
 #include "serialization/string_utils.hpp"
+#include "serialization/unicode.hpp"
 
 NOTIFYICONDATA* windows_tray_notification::nid = NULL;
 bool windows_tray_notification::message_reset = false;
@@ -58,7 +60,7 @@ bool windows_tray_notification::create_tray_icon()
 		return false;
 	}
 
-	const HRSRC group_icon_info = FindResource(wesnoth_exe, L"WESNOTH_ICON", RT_GROUP_ICON);
+	const HRSRC group_icon_info = FindResource(wesnoth_exe, TEXT("WESNOTH_ICON"), RT_GROUP_ICON);
 	if (group_icon_info == NULL) {
 		return false;
 	}
@@ -98,14 +100,16 @@ bool windows_tray_notification::create_tray_icon()
 		return false;
 	}
 
-	const HWND window = get_window_hanlde();
+	const HWND window = get_window_handle();
 	if (window == NULL) {
 		return false;
 	}
 
+	const std::wstring& wtip = string_to_wstring(_("The Battle for Wesnoth"), MAX_TITLE_LENGTH);
+
 	// filling notification structure
 	nid = new NOTIFYICONDATA;
-	memset(nid, 0, sizeof(&nid));
+	memset(nid, 0, sizeof(*nid));
 	nid->cbSize = NOTIFYICONDATA_V2_SIZE;
 	nid->hWnd = window;
 	nid->uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
@@ -117,7 +121,7 @@ bool windows_tray_notification::create_tray_icon()
 #if _WIN32_WINNT >= 0x600
 	nid->hBalloonIcon = icon;
 #endif
-	lstrcpy(nid->szTip, L"The Battle For Wesnoth");
+	lstrcpyW(nid->szTip, wtip.c_str());
 
 	// creating icon notification
 	return Shell_NotifyIcon(NIM_ADD, nid) != FALSE;
@@ -129,8 +133,8 @@ bool windows_tray_notification::set_tray_message(const std::string& title, const
 	message_reset = (nid->uFlags & NIF_INFO) != 0;
 
 	nid->uFlags |= NIF_INFO;
-	lstrcpy(nid->szInfoTitle, string_to_wstring(title).data());
-	lstrcpy(nid->szInfo, string_to_wstring(message).data());
+	lstrcpyW(nid->szInfoTitle, string_to_wstring(title, MAX_TITLE_LENGTH).c_str());
+	lstrcpyW(nid->szInfo, string_to_wstring(message, MAX_MESSAGE_LENGTH).c_str());
 
 	// setting notification
 	return Shell_NotifyIcon(NIM_MODIFY, nid) != FALSE;
@@ -149,7 +153,7 @@ void windows_tray_notification::adjust_length(std::string& title, std::string& m
 	}
 }
 
-HWND windows_tray_notification::get_window_hanlde()
+HWND windows_tray_notification::get_window_handle()
 {
 	SDL_SysWMinfo wmInfo;
 	SDL_VERSION(&wmInfo.version);
@@ -162,7 +166,7 @@ HWND windows_tray_notification::get_window_hanlde()
 
 void windows_tray_notification::switch_to_wesnoth_window()
 {
-	const HWND window = get_window_hanlde();
+	const HWND window = get_window_handle();
 	if (window == NULL) {
 		return;
 	}
@@ -173,10 +177,16 @@ void windows_tray_notification::switch_to_wesnoth_window()
 	SetForegroundWindow(window);
 }
 
-std::wstring windows_tray_notification::string_to_wstring(const std::string& string)
+std::wstring windows_tray_notification::string_to_wstring(const std::string& string, size_t maxlength)
 {
-	const std::vector<wchar_t> wide_string = utils::string_to_wstring(string);
-	return std::wstring(wide_string.begin(), wide_string.end());
+	utf16::string u16_string = unicode_cast<utf16::string>(string);
+	if(u16_string.size() > maxlength) {
+		if((u16_string[maxlength-1] & 0xDC00) == 0xD800)
+			u16_string.resize(maxlength - 1);
+		else
+			u16_string.resize(maxlength);
+	}
+	return std::wstring(u16_string.begin(), u16_string.end());
 }
 
 bool windows_tray_notification::show(std::string title, std::string message)

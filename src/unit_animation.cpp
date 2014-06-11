@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Jeremy Rosen <jeremy.rosen@enst-bretagne.fr>
+   Copyright (C) 2006 - 2014 by Jeremy Rosen <jeremy.rosen@enst-bretagne.fr>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -78,8 +78,9 @@ struct animation_branch
 	config merge() const
 	{
 		config result = attributes;
-		BOOST_FOREACH(const config::all_children_iterator &i, children)
+		BOOST_FOREACH(const config::all_children_iterator &i, children) {
 			result.add_child(i->key, i->cfg);
+		}
 		return result;
 	}
 };
@@ -99,28 +100,124 @@ struct animation_cursor
 	animation_cursor(const config &cfg, animation_cursor *p):
 		itors(cfg.all_children_range()), branches(p->branches), parent(p)
 	{
-		BOOST_FOREACH(animation_branch &ab, branches)
-			ab.attributes.merge_attributes(cfg);
+		// If similar 'if' condition in parent branches, we need to
+		// cull the branches where there are partial matches.
+		// Hence the need to check if the condition has come up before.
+		// Also, the attributes are merged here between branches.
+		bool previously_hits_set = false;
+		bool previously_direction_set = false;
+		bool previously_terrain_set = false;
+		bool previously_value_set = false;
+		bool previously_value_2nd_set = false;
+		std::string s_cfg_hits = cfg["hits"];
+		std::string s_cfg_direction = cfg["direction"];
+		std::string s_cfg_terrain = cfg["terrain_types"];
+		std::string s_cfg_value = cfg["value"];
+		std::string s_cfg_value_2nd = cfg["value_2nd"];
+		for (std::list<animation_branch>::iterator bi = branches.begin();
+			 bi != branches.end(); ++bi)
+		{
+			std::string s_branch_hits = (*bi).attributes["hits"];
+			std::string s_branch_direction = (*bi).attributes["direction"];
+			std::string s_branch_terrain = (*bi).attributes["terrain_types"];
+			std::string s_branch_value = (*bi).attributes["value"];
+			std::string s_branch_value_2nd = (*bi).attributes["value_second"];
+			if (s_branch_hits != "" && s_branch_hits == s_cfg_hits) {
+				previously_hits_set = true;
+			}
+			if (s_branch_direction != "" && s_branch_direction == s_cfg_direction) {
+				previously_direction_set = true;
+			}
+			if (s_branch_terrain != "" && s_branch_terrain == s_cfg_terrain) {
+				previously_terrain_set = true;
+			}
+			if (s_branch_value != "" && s_branch_value == s_cfg_value) {
+				previously_value_set = true;
+			}
+			if (s_branch_value_2nd != "" && s_branch_value_2nd == s_cfg_value_2nd) {
+				previously_value_2nd_set = true;
+			}
+		}
+		// Merge all frames that have new matches and prune any impossible
+		// matches, e.g. hits='yes' and hits='no'
+		for (std::list<animation_branch>::iterator bi = branches.begin();
+			 bi != branches.end(); /* nothing */)
+		{
+			std::string s_branch_hits = (*bi).attributes["hits"];
+			std::string s_branch_direction = (*bi).attributes["direction"];
+			std::string s_branch_terrain = (*bi).attributes["terrain_types"];
+			std::string s_branch_value = (*bi).attributes["value"];
+			std::string s_branch_value_2nd = (*bi).attributes["value_second"];
+			bool hits_match = (previously_hits_set && s_branch_hits != s_cfg_hits);
+			bool direction_match = (previously_direction_set && s_branch_direction != s_cfg_direction);
+			bool terrain_match = (previously_terrain_set && s_branch_terrain != s_cfg_terrain);
+			bool value_match = (previously_value_set && s_branch_value != s_cfg_value);
+			bool value_2nd_match = (previously_value_2nd_set && s_branch_value_2nd != s_cfg_value_2nd);
+			if ( (!previously_hits_set || hits_match) &&
+			     (!previously_direction_set || direction_match) &&
+			     (!previously_terrain_set || terrain_match) &&
+			     (!previously_value_set || value_match) &&
+			     (!previously_value_2nd_set || value_2nd_match) &&
+			     (hits_match || direction_match || terrain_match || value_match || value_2nd_match) )
+			{
+				branches.erase(bi++);
+			}
+			else {
+				(*bi).attributes.merge_attributes(cfg);
+				++bi;
+			}
+		}
+		// Then we prune all parent branches with similar matches as they
+		// now will not have the full frame list
+		for (std::list<animation_branch>::iterator bi = parent->branches.begin();
+			 bi != parent->branches.end(); /* nothing */)
+		{
+			std::string s_branch_hits = (*bi).attributes["hits"];
+			std::string s_branch_direction = (*bi).attributes["direction"];
+			std::string s_branch_terrain = (*bi).attributes["terrain_types"];
+			std::string s_branch_value = (*bi).attributes["value"];
+			std::string s_branch_value_2nd = (*bi).attributes["value_second"];
+			bool hits_match = (previously_hits_set && s_branch_hits == s_cfg_hits);
+			bool direction_match = (previously_direction_set && s_branch_direction == s_cfg_direction);
+			bool terrain_match = (previously_terrain_set && s_branch_terrain == s_cfg_terrain);
+			bool value_match = (previously_value_set && s_branch_value == s_cfg_value);
+			bool value_2nd_match = (previously_value_2nd_set && s_branch_value_2nd == s_cfg_value_2nd);
+			if ( (!previously_hits_set || hits_match) &&
+			     (!previously_direction_set || direction_match) &&
+			     (!previously_terrain_set || terrain_match) &&
+			     (!previously_value_set || value_match) &&
+			     (!previously_value_2nd_set || value_2nd_match) &&
+			     (hits_match || direction_match || terrain_match || value_match || value_2nd_match) )
+			{
+				parent->branches.erase(bi++);
+			}
+			else ++bi;
+		}
 	}
 };
 
 static void prepare_single_animation(const config &anim_cfg, animation_branches &expanded_anims)
 {
+	/* The anim_cursor holds the current parsing through the config and the
+	   branches hold the data that will be interpreted as the actual animation.
+	   The branches store the config attributes for each block and the
+	   children of those branches make up all the 'frame', 'missile_frame', etc.
+	   individually (so 2 instances of 'frame' would be stored as 2 children) */
 	std::list<animation_cursor> anim_cursors;
 	anim_cursors.push_back(animation_cursor(anim_cfg));
 	while (!anim_cursors.empty())
 	{
 		animation_cursor &ac = anim_cursors.back();
+
+		// Reached end of sub-tag config block
 		if (ac.itors.first == ac.itors.second) {
 			if (!ac.parent) break;
 			// Merge all the current branches into the parent.
-			ac.parent->branches.splice(ac.parent->branches.end(),
-				ac.branches, ac.branches.begin(), ac.branches.end());
+			ac.parent->branches.splice(ac.parent->branches.end(), ac.branches);
 			anim_cursors.pop_back();
 			continue;
 		}
-		if (ac.itors.first->key != "if")
-		{
+		if (ac.itors.first->key != "if") {
 			// Append current config object to all the branches in scope.
 			BOOST_FOREACH(animation_branch &ab, ac.branches) {
 				ab.children.push_back(ac.itors.first);
@@ -130,19 +227,26 @@ static void prepare_single_animation(const config &anim_cfg, animation_branches 
 		}
 		int count = 0;
 		do {
-			/* Copies the current branches to each cursor created
-			   for the conditional clauses. Merge the attributes
-			   of the clause into them. */
+			/* Copies the current branches to each cursor created for the
+			   conditional clauses. Merge attributes of the clause into them. */
 			anim_cursors.push_back(animation_cursor(ac.itors.first->cfg, &ac));
 			++ac.itors.first;
 			++count;
 		} while (ac.itors.first != ac.itors.second && ac.itors.first->key == "else");
 		if (count > 1) {
-			/* There are some "else" clauses, discard the branches
-			   from the current cursor. */
+			// When else statements present, clear all branches before 'if'
 			ac.branches.clear();
 		}
 	}
+
+	//debug
+	/*BOOST_FOREACH(animation_branch &ab, anim_cursors.back().branches) {
+		std::cout << "--branch--\n" << ab.attributes;
+		BOOST_FOREACH(config::all_children_iterator &ci, ab.children) {
+			std::cout << "--branchcfg--\n" << ci->cfg;
+		}
+		std::cout << "\n";
+	}*/
 
 	// Create the config object describing each branch.
 	assert(anim_cursors.size() == 1);
@@ -303,7 +407,7 @@ int unit_animation::matches(const display &disp,const map_location& loc,const ma
 		}
 		if(!secondary_unit_filter_.empty()) {
 			unit_map::const_iterator unit;
-			for(unit=disp.get_const_units().begin() ; unit != disp.get_const_units().end() ; ++unit) {
+			for(unit=disp.get_units().begin() ; unit != disp.get_units().end() ; ++unit) {
 				if (unit->get_location() == second_loc) {
 					std::vector<config>::const_iterator second_itor;
 					for(second_itor = secondary_unit_filter_.begin(); second_itor != secondary_unit_filter_.end(); ++second_itor) {
@@ -314,7 +418,7 @@ int unit_animation::matches(const display &disp,const map_location& loc,const ma
 					break;
 				}
 			}
-			if(unit == disp.get_const_units().end()) return MATCH_FAIL;
+			if(unit == disp.get_units().end()) return MATCH_FAIL;
 		}
 
 	} else if (!unit_filter_.empty()) return MATCH_FAIL;
@@ -422,7 +526,7 @@ void unit_animation::fill_initial_animations( std::vector<unit_animation> & anim
 
 		animations.push_back(*itor);
 		animations.back().event_ = utils::split("movement");
-		animations.back().unit_anim_.override(0,6800,particule::NO_CYCLE,"","",0,"0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,0~1:200,",lexical_cast<std::string>(display::LAYER_UNIT_MOVE_DEFAULT-display::LAYER_UNIT_FIRST));
+		animations.back().unit_anim_.override(0,200,particule::NO_CYCLE,"","",0,"0~1:200",lexical_cast<std::string>(display::LAYER_UNIT_MOVE_DEFAULT-display::LAYER_UNIT_FIRST));
 
 		animations.push_back(*itor);
 		animations.back().event_ = utils::split("defend");
@@ -449,7 +553,6 @@ void unit_animation::fill_initial_animations( std::vector<unit_animation> & anim
 		animations.back().event_ = utils::split("death");
 		animations.back().unit_anim_.override(0,600,particule::NO_CYCLE,"1~0:600");
 		animations.back().sub_anims_["_death_sound"] = particule();
-		animations.back().sub_anims_["_death_sound"].add_frame(1,frame_builder());
 		animations.back().sub_anims_["_death_sound"].add_frame(1,frame_builder().sound(cfg["die_sound"]),true);
 
 		animations.push_back(*itor);
@@ -465,17 +568,23 @@ void unit_animation::fill_initial_animations( std::vector<unit_animation> & anim
 		animations.back().event_ = utils::split("post_teleport");
 
 		animations.push_back(*itor);
+		animations.back().event_ = utils::split("healing");
+
+		animations.push_back(*itor);
 		animations.back().event_ = utils::split("healed");
 		animations.back().unit_anim_.override(0,300,particule::NO_CYCLE,"","0:30,0.5:30,0:30,0.5:30,0:30,0.5:30,0:30,0.5:30,0:30",display::rgb(255,255,255));
-		animations.back().sub_anims_["_healed_sound"] = particule();
-		animations.back().sub_anims_["_healed_sound"].add_frame(1,frame_builder());
-		animations.back().sub_anims_["_healed_sound"].add_frame(1,frame_builder().sound("heal.wav"),true);
+		std::string healed_sound;
+		if (cfg["healed_sound"].empty()) {
+			healed_sound = "heal.wav";
+		} else {
+			healed_sound = cfg["healed_sound"].str();
+		}
+		animations.back().sub_anims_["_healed_sound"].add_frame(1,frame_builder().sound(healed_sound),true);
 
 		animations.push_back(*itor);
 		animations.back().event_ = utils::split("poisoned");
 		animations.back().unit_anim_.override(0,300,particule::NO_CYCLE,"","0:30,0.5:30,0:30,0.5:30,0:30,0.5:30,0:30,0.5:30,0:30",display::rgb(0,255,0));
 		animations.back().sub_anims_["_poison_sound"] = particule();
-		animations.back().sub_anims_["_poison_sound"].add_frame(1,frame_builder());
 		animations.back().sub_anims_["_poison_sound"].add_frame(1,frame_builder().sound("poison.ogg"),true);
 
 	}
@@ -524,6 +633,15 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 		config anim = ab.merge();
 		anim["apply_to"] = "standing";
 		anim["cycles"] = "true";
+		// add cycles to all frames within a standing animation block
+		BOOST_FOREACH(config::all_children_iterator ci, ab.children)
+		{
+			std::string sub_frame_name = ci->key;
+			size_t pos = sub_frame_name.find("_frame");
+			if (pos != std::string::npos) {
+				anim[sub_frame_name.substr(0,pos)+"_cycles"] = "true";
+			}
+		}
 		if (anim["layer"].empty()) anim["layer"] = default_layer;
 		if (anim["offscreen"].empty()) anim["offscreen"] = false;
 		animations.push_back(unit_animation(anim));
@@ -533,7 +651,15 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 	{
 		config anim = ab.merge();
 		anim["apply_to"] = "default";
-		anim["cycles"] = "false";
+		anim["cycles"] = "true";
+		BOOST_FOREACH(config::all_children_iterator ci, ab.children)
+		{
+			std::string sub_frame_name = ci->key;
+			size_t pos = sub_frame_name.find("_frame");
+			if (pos != std::string::npos) {
+				anim[sub_frame_name.substr(0,pos)+"_cycles"] = "true";
+			}
+		}
 		if (anim["layer"].empty()) anim["layer"] = default_layer;
 		if (anim["offscreen"].empty()) anim["offscreen"] = false;
 		animations.push_back(unit_animation(anim));
@@ -555,8 +681,13 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 		anim["value"] = anim["healing"];
 		animations.push_back(unit_animation(anim));
 		animations.back().sub_anims_["_healed_sound"] = particule();
-		animations.back().sub_anims_["_healed_sound"].add_frame(1,frame_builder());
-		animations.back().sub_anims_["_healed_sound"].add_frame(1,frame_builder().sound("heal.wav"),true);
+		std::string healed_sound;
+		if (cfg["healed_sound"].empty()) {
+			healed_sound = "heal.wav";
+		} else {
+			healed_sound = cfg["healed_sound"].str();
+		}
+		animations.back().sub_anims_["_healed_sound"].add_frame(1,frame_builder().sound(healed_sound),true);
 	}
 
 	BOOST_FOREACH(const animation_branch &ab, prepare_animation(cfg, "poison_anim"))
@@ -567,7 +698,6 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 		anim["value"] = anim["damage"];
 		animations.push_back(unit_animation(anim));
 		animations.back().sub_anims_["_poison_sound"] = particule();
-		animations.back().sub_anims_["_poison_sound"].add_frame(1,frame_builder());
 		animations.back().sub_anims_["_poison_sound"].add_frame(1,frame_builder().sound("poison.ogg"),true);
 	}
 
@@ -602,8 +732,9 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 			anim["hits"] = true;
 			animations.push_back(unit_animation(anim));
 			animations.back().base_score_--;
+			image::locator image_loc = animations.back().get_last_frame().end_parameters().image;
 			animations.back().add_frame(225,frame_builder()
-					.image(animations.back().get_last_frame().end_parameters().image.get_filename())
+					.image(image_loc.get_filename()+image_loc.get_modifications())
 					.duration(225)
 					.blend("0.0,0.5:75,0.0:75,0.5:75,0.0",game_display::rgb(255,0,0)));
 		}
@@ -615,9 +746,10 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 				config tmp = anim;
 				tmp["hits"] = hit_type;
 				animations.push_back(unit_animation(tmp));
+				image::locator image_loc = animations.back().get_last_frame().end_parameters().image;
 				if(hit_type == "yes" || hit_type == "hit" || hit_type=="kill") {
 					animations.back().add_frame(225,frame_builder()
-							.image(animations.back().get_last_frame().end_parameters().image.get_filename())
+							.image(image_loc.get_filename()+image_loc.get_modifications())
 							.duration(225)
 							.blend("0.0,0.5:75,0.0:75,0.5:75,0.0",game_display::rgb(255,0,0)));
 				}
@@ -656,11 +788,13 @@ void unit_animation::add_anims( std::vector<unit_animation> & animations, const 
 		if (anim["layer"].empty()) anim["layer"] = default_layer;
 		animations.push_back(unit_animation(anim));
 		image::locator image_loc = animations.back().get_last_frame().end_parameters().image;
-		
-		animations.back().add_frame(600,frame_builder().image(image_loc.get_filename()).duration(600).highlight("1~0:600"));
+
+		animations.back().add_frame(600,frame_builder()
+									.image(image_loc.get_filename()+image_loc.get_modifications())
+									.duration(600)
+									.highlight("1~0:600"));
 		if(!cfg["die_sound"].empty()) {
 			animations.back().sub_anims_["_death_sound"] = particule();
-			animations.back().sub_anims_["_death_sound"].add_frame(1,frame_builder());
 			animations.back().sub_anims_["_death_sound"].add_frame(1,frame_builder().sound(cfg["die_sound"]),true);
 		}
 	}
@@ -949,17 +1083,151 @@ bool unit_animation::invalidate(frame_parameters& value)
 	}
 }
 
+std::string unit_animation::debug() const
+{
+	std::ostringstream outstream;
+	outstream << *this;
+	return outstream.str();
+}
+
+std::ostream& operator << (std::ostream& outstream, const unit_animation& u_animation)
+{
+	std::cout << "[";
+	int i=0;
+	BOOST_FOREACH(std::string event, u_animation.event_) {
+		if (i>0) std::cout << ','; i++;
+		std::cout << event;
+	}
+	std::cout << "]\n";
+
+	std::cout << "\tstart_time=" << u_animation.get_begin_time() << '\n';
+
+	if (u_animation.hits_.size() > 0) {
+		std::cout << "\thits=";
+		i=0;
+		BOOST_FOREACH(const unit_animation::hit_type hit_type, u_animation.hits_) {
+			if (i>0) std::cout << ','; i++;
+			switch (hit_type) {
+				case (unit_animation::HIT)     : std::cout << "hit"; break;
+				case (unit_animation::MISS)    : std::cout << "miss"; break;
+				case (unit_animation::KILL)    : std::cout << "kill"; break;
+				case (unit_animation::INVALID) : std::cout << "invalid"; break;
+			}
+		}
+		std::cout << '\n';
+	}
+	if (u_animation.directions_.size() > 0) {
+		std::cout << "\tdirections=";
+		i=0;
+		BOOST_FOREACH(const map_location::DIRECTION direction, u_animation.directions_) {
+			if (i>0) std::cout << ','; i++;
+			switch (direction) {
+				case (map_location::NORTH)     : std::cout << "n"; break;
+				case (map_location::NORTH_EAST): std::cout << "ne"; break;
+				case (map_location::SOUTH_EAST): std::cout << "se"; break;
+				case (map_location::SOUTH)     : std::cout << "s"; break;
+				case (map_location::SOUTH_WEST): std::cout << "sw"; break;
+				case (map_location::NORTH_WEST): std::cout << "nw"; break;
+				default: break;
+			}
+		}
+		std::cout << '\n';
+	}
+	if (u_animation.terrain_types_.size() > 0) {
+		i=0;
+		std::cout << "\tterrain=";
+		BOOST_FOREACH(const t_translation::t_terrain terrain, u_animation.terrain_types_) {
+			if (i>0) std::cout << ','; i++;
+			std::cout << terrain;
+		}
+		std::cout << '\n';
+	}
+	if (u_animation.frequency_>0) std::cout << "frequency=" << u_animation.frequency_ << '\n';
+
+	if (u_animation.unit_filter_.size() > 0) {
+		std::cout << "[filter]\n";
+		BOOST_FOREACH(const config cfg, u_animation.unit_filter_) {
+			std::cout << cfg.debug();
+		}
+		std::cout << "[/filter]\n";
+	}
+	if (u_animation.secondary_unit_filter_.size() > 0) {
+		std::cout << "[filter_second]\n";
+		BOOST_FOREACH(const config cfg, u_animation.secondary_unit_filter_) {
+			std::cout << cfg.debug();
+		}
+		std::cout << "[/filter_second]\n";
+	}
+	if (u_animation.primary_attack_filter_.size() > 0) {
+		std::cout << "[filter_attack]\n";
+		BOOST_FOREACH(const config cfg, u_animation.primary_attack_filter_) {
+			std::cout << cfg.debug();
+		}
+		std::cout << "[/filter_attack]\n";
+	}
+	if (u_animation.secondary_attack_filter_.size() > 0) {
+		std::cout << "[filter_second_attack]\n";
+		BOOST_FOREACH(const config cfg, u_animation.secondary_attack_filter_) {
+			std::cout << cfg.debug();
+		}
+		std::cout << "[/filter_second_attack]\n";
+	}
+
+	for (size_t i=0; i<u_animation.unit_anim_.get_frames_count(); i++) {
+		std::cout << "\t[frame]\n";
+		BOOST_FOREACH(const std::string frame_string, u_animation.unit_anim_.get_frame(i).debug_strings()) {
+			std::cout << "\t\t" << frame_string <<"\n";
+		}
+		std::cout << "\t[/frame]\n";
+	}
+
+	std::pair<std::string, unit_animation::particule> p;
+	BOOST_FOREACH (p, u_animation.sub_anims_) {
+		for (size_t i=0; i<p.second.get_frames_count(); i++) {
+			std::string sub_frame_name = p.first;
+			size_t pos = sub_frame_name.find("_frame");
+			if (pos != std::string::npos) sub_frame_name = sub_frame_name.substr(0,pos);
+			std::cout << "\t" << sub_frame_name << "_start_time=" << p.second.get_begin_time() << '\n';
+			std::cout << "\t[" << p.first << "]\n";
+			BOOST_FOREACH(const std::string frame_string, p.second.get_frame(i).debug_strings()) {
+				std::cout << "\t\t" << frame_string << '\n';
+			}
+			std::cout << "\t[/" << p.first << "]\n";
+		}
+	}
+
+	std::cout << "[/";
+	i=0;
+	BOOST_FOREACH(std::string event, u_animation.event_) {
+		if (i>0) std::cout << ','; i++;
+		std::cout << event;
+	}
+	std::cout << "]\n";
+	return outstream;
+}
 
 
 void unit_animation::particule::redraw(const frame_parameters& value,const map_location &src, const map_location &dst)
 {
 	const unit_frame& current_frame= get_current_frame();
-	const frame_parameters default_val = parameters_.parameters(get_animation_time() -get_begin_time());
-	if(get_current_frame_begin_time() != last_frame_begin_time_ ) {
+	const int animation_time = get_animation_time();
+	const frame_parameters default_val = parameters_.parameters(animation_time -get_begin_time());
+
+	// everything is relative to the first frame in an attack/defense/etc. block.
+	// so we need to check if this particular frame is due to be shown at this time
+	bool in_scope_of_frame = (animation_time >= get_current_frame_begin_time() ? true: false);
+	if (animation_time > get_current_frame_end_time()) in_scope_of_frame = false;
+
+	// sometimes even if the frame is not due to be shown, a frame image still must be shown.
+	// i.e. in a defense animation that is shorter than an attack animation.
+	// the halos should not persist though and use the 'in_scope_of_frame' variable.
+
+	// for sound frames we want the first time variable set only after the frame has started.
+	if(get_current_frame_begin_time() != last_frame_begin_time_ && animation_time >= get_current_frame_begin_time()) {
 		last_frame_begin_time_ = get_current_frame_begin_time();
-		current_frame.redraw(get_current_frame_time(),true,src,dst,&halo_id_,default_val,value);
+		current_frame.redraw(get_current_frame_time(),true,in_scope_of_frame,src,dst,&halo_id_,default_val,value);
 	} else {
-		current_frame.redraw(get_current_frame_time(),false,src,dst,&halo_id_,default_val,value);
+		current_frame.redraw(get_current_frame_time(),false,in_scope_of_frame,src,dst,&halo_id_,default_val,value);
 	}
 }
 void unit_animation::particule::clear_halo()
@@ -992,7 +1260,9 @@ void unit_animation::particule::start_animation(int start_time)
 	last_frame_begin_time_ = get_begin_time() -1;
 }
 
-void unit_animator::add_animation(unit* animated_unit
+
+
+void unit_animator::add_animation(const unit* animated_unit
 		, const std::string& event
 		, const map_location &src
 		, const map_location &dst
@@ -1020,7 +1290,7 @@ void unit_animator::add_animation(unit* animated_unit
 	animated_units_.push_back(tmp);
 }
 
-void unit_animator::add_animation(unit* animated_unit
+void unit_animator::add_animation(const unit* animated_unit
 		, const unit_animation* anim
 		, const map_location &src
 		, bool with_bars
@@ -1041,7 +1311,7 @@ void unit_animator::add_animation(unit* animated_unit
 	animated_units_.push_back(tmp);
 }
 
-void unit_animator::replace_anim_if_invalid(unit* animated_unit
+void unit_animator::replace_anim_if_invalid(const unit* animated_unit
 		, const std::string& event
 		, const map_location &src
 		, const map_location & dst
@@ -1125,13 +1395,50 @@ void unit_animator::wait_until(int animation_time) const
 	new_animation_frame();
 }
 
+namespace {
+class reentry_preventer {
+public:
+	class entry {
+	public:
+		bool valid() {
+			return valid_;
+		}
+		operator bool() {
+			return valid();
+		}
+		~entry() {
+			--parent_->depth;
+		}
+	private:
+		entry(reentry_preventer *p) : parent_(p), valid_(++p->depth == 1) {}
+		reentry_preventer *parent_;
+		bool valid_;
+		friend class reentry_preventer;
+	};
+
+	reentry_preventer() : depth(0) {}
+	entry enter() {
+		return entry(this);
+	}
+private:
+	unsigned depth;
+};
+}
+
 void unit_animator::wait_for_end() const
 {
 	if (game_config::no_delay) return;
+	static reentry_preventer rp;
+	reentry_preventer::entry rpe = rp.enter();
+	assert(rpe || (false && "Reentered a unit animation. See bug #18921")); //Catches reentry
 	bool finished = false;
 	display*disp = display::get_singleton();
 	while(!finished) {
 		resources::controller->play_slice(false);
+		// Replacing the below assert with a conditional break will fix the local segfault,
+		// but this just exposes a different one.
+		// It's also unnecessary given the one a few lines up.
+		assert(rpe || (false && "Reentered a unit animation. See bug #18921")); //Catches a past reentry
 		disp->delay(10);
 		finished = true;
 		for(std::vector<anim_elem>::const_iterator anim = animated_units_.begin(); anim != animated_units_.end();++anim) {

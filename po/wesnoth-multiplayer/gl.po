@@ -9,13 +9,13 @@
 # Fran Diéguez <fran dot dieguez at glug dot es>, 2008.
 # Adrián Chaves Fernández <adriyetichaves@gmail.com>, 2010.
 # Adrián Chaves Fernández (Gallaecio) <adriyetichaves@gmail.com>, 2011.
-# Adrian Chaves Fernandez (Gallaecio) <adriyetichaves@gmail.com>, 2011, 2012.
+# Adrian Chaves Fernandez (Gallaecio) <adriyetichaves@gmail.com>, 2011, 2012, 2013, 2014.
 msgid ""
 msgstr ""
 "Project-Id-Version: Wesnoth\n"
 "Report-Msgid-Bugs-To: http://bugs.wesnoth.org/\n"
-"POT-Creation-Date: 2013-03-09 08:51+0100\n"
-"PO-Revision-Date: 2012-09-22 09:02+0200\n"
+"POT-Creation-Date: 2014-02-05 19:37+0100\n"
+"PO-Revision-Date: 2014-02-01 19:08+0100\n"
 "Last-Translator: Adrián Chaves Fernández <adriyetichaves@gmail.com>\n"
 "Language-Team: Galician <proxecto@trasno.net>\n"
 "Language: gl\n"
@@ -37,18 +37,23 @@ msgstr ""
 msgid "User Map"
 msgstr "Mapa do usuario"
 
-#. [multiplayer_side]: id=Random
+#. [multiplayer_side]: id=Custom
 #: data/multiplayer/eras.cfg:5
+msgid "Custom"
+msgstr "Personalizado"
+
+#. [multiplayer_side]: id=Random
+#: data/multiplayer/eras.cfg:13
 msgid "Random"
 msgstr "Ao chou"
 
 #. [lua]: id=unit.id }), speaker=narrator, speaker=narrator
-#: data/multiplayer/eras.cfg:116
+#: data/multiplayer/eras.cfg:125
 msgid "<span strikethrough='true' foreground='#%02x%02x%02x'>Side %d</span>"
 msgstr "<span strikethrough='true' foreground='#%02x%02x%02x'>Bando %d</span>"
 
 #. [lua]: id=unit.id }), speaker=narrator, speaker=narrator
-#: data/multiplayer/eras.cfg:132
+#: data/multiplayer/eras.cfg:141
 msgid ""
 "<span foreground='#%02x%02x%02x'>Side %d</span>:  Income score = %d  Unit "
 "score = %d  Gold = %d"
@@ -57,31 +62,103 @@ msgstr ""
 "Puntos por unidades = %d  Moedas = %d"
 
 #. [lua]: id=unit.id }), speaker=narrator, speaker=narrator
-#: data/multiplayer/eras.cfg:132
+#: data/multiplayer/eras.cfg:141
 msgid "Grand total: <b>%d</b>"
 msgstr "Total: <b>%d</b>"
 
 #. [lua]: id=unit.id }), speaker=narrator, speaker=narrator
-#: data/multiplayer/eras.cfg:142
+#: data/multiplayer/eras.cfg:151
 msgid "<span foreground='%s'>Side %d</span> has the advantage."
 msgstr "O <span foreground='%s'>bando %d</span> vai en cabeza."
 
 # Aparece cando se acceder a «Varios xogadores → Partida local». «Predeterminada» non cabe no botón, de aí que se acurte co punto.
 #. [era]: id=era_default
-#: data/multiplayer/eras.cfg:166
+#: data/multiplayer/eras.cfg:176
 msgid "Default"
 msgstr "Predeterm."
 
+#. [era]: id=era_default
+#: data/multiplayer/eras.cfg:177
+msgid ""
+"The standard era for Wesnoth multiplayer. Consists of six factions and is "
+"generally balanced."
+msgstr ""
+"A era estándar do xogo para partidas de varios xogadores. Está composta de "
+"seis faccións igualadas."
+
 #. [era]: id=era_heroes
-#: data/multiplayer/eras.cfg:186
+#: data/multiplayer/eras.cfg:197
 msgid "Age of Heroes"
 msgstr "Idade dos heroes"
+
+#. [era]: id=era_heroes
+#: data/multiplayer/eras.cfg:198
+msgid ""
+"An era with higher level units: level three leaders, with level one and two "
+"units available for recruit. Consists of six factions. Not considered "
+"balanced."
+msgstr ""
+"Unha era con unidades de maior nivel: líderes de nivel tres, capaces de "
+"recrutar unidades de niveis 1 e 2. Está formada por 6 faccións. Non se "
+"considera que as faccións estean igualadas."
+
+#. [era]: id=era_khalifate
+#: data/multiplayer/eras.cfg:205
+msgid "Default + Khalifate"
+msgstr "Preterm. co califato"
+
+#. [era]: id=era_khalifate
+#: data/multiplayer/eras.cfg:206
+msgid ""
+"An era featuring an additional faction besides the six factions from Default "
+"Era. Khalifate units use no magic, but instead rely on careful use of "
+"terrain and coordinated strikes around dusk or dawn.\n"
+"\n"
+"This era is still under development, so please be sure to report any "
+"problems that arise."
+msgstr ""
+"Unha era que conta cunha facción adicional ademais das seis faccións da era "
+"predeterminada. As unidades do Califato non empregan maxia, senón que "
+"confían no uso estratéxico do terreo e ataques coordinados ao amencer e o "
+"solpor.\n"
+"\n"
+"Esta era aínda está en pleno desenvolvemento, así que rogámoslle que nos "
+"informe sen dubidalo de calquera problema que atope ao xogar con ela."
+
+#. [era]: id=era_khalifate_heroes
+#: data/multiplayer/eras.cfg:216
+msgid "Age of Heroes + Khalifate"
+msgstr "Idade dos heroes + Califato"
+
+#. [era]: id=era_khalifate_heroes
+#: data/multiplayer/eras.cfg:217
+msgid ""
+"An era featuring an additional faction besides the six factions from Age of "
+"Heroes Era. Khalifate units use no magic, but instead rely on careful use of "
+"terrain and coordinated strikes around dusk or dawn.\n"
+"\n"
+"This era is still under development, so please be sure to report any "
+"problems that arise."
+msgstr ""
+"Unha era que conta cunha facción adicional ademais das seis faccións da "
+"«Idade dos heroes». As unidades do Califato non empregan maxia, senón que "
+"confían no uso estratéxico do terreo e ataques coordinados ao amencer e o "
+"solpor.\n"
+"\n"
+"Esta era aínda está en pleno desenvolvemento, así que rogámoslle que nos "
+"informe sen dubidalo de calquera problema que atope ao xogar con ela."
 
 #. [multiplayer_side]: id=Drakes, type=random
 #: data/multiplayer/factions/drakes-aoh.cfg:4
 #: data/multiplayer/factions/drakes-default.cfg:4
 msgid "Drakes"
 msgstr "Draconiáns"
+
+#. [multiplayer_side]: id=Khalifate, type=random
+#: data/multiplayer/factions/khalifate-aoh.cfg:4
+#: data/multiplayer/factions/khalifate-default.cfg:4
+msgid "Khalifate"
+msgstr "Califato"
 
 #. [multiplayer_side]: id=Knalgan Alliance, type=random
 #: data/multiplayer/factions/knalgans-aoh.cfg:4
@@ -154,7 +231,7 @@ msgstr ""
 #: data/multiplayer/scenarios/2p_Den_of_Onis.cfg:37
 #: data/multiplayer/scenarios/2p_Elensefar_Courtyard.cfg:34
 #: data/multiplayer/scenarios/2p_Hamlets.cfg:22
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:48
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:43
 #: data/multiplayer/scenarios/2p_Howling_Ghost_Badlands.cfg:47
 #: data/multiplayer/scenarios/2p_Sablestone_Delta.cfg:21
 #: data/multiplayer/scenarios/2p_Sullas_Ruins.cfg:67
@@ -187,7 +264,7 @@ msgstr "Norte"
 #: data/multiplayer/scenarios/2p_Den_of_Onis.cfg:26
 #: data/multiplayer/scenarios/2p_Elensefar_Courtyard.cfg:22
 #: data/multiplayer/scenarios/2p_Hamlets.cfg:33
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:60
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:55
 #: data/multiplayer/scenarios/2p_Howling_Ghost_Badlands.cfg:36
 #: data/multiplayer/scenarios/2p_Sablestone_Delta.cfg:32
 #: data/multiplayer/scenarios/2p_Sullas_Ruins.cfg:55
@@ -279,18 +356,18 @@ msgid ""
 "granite and obsidian walls of Arcanclave Citadel. Designed by Doc Paterson."
 msgstr ""
 "Hai moito tempo, séculos antes do reinado de Haldric, alén do límite polo "
-"leste do bosque Lintanir, loitáronse grandes e terríbeis guerras. Os libros "
-"de historia falan dun poderoso mago guerreiro, xenio da estratexia e "
+"leste do Bosque de Lintanir, loitáronse grandes e terríbeis guerras. Os "
+"libros de historia falan dun poderoso mago guerreiro, xenio da estratexia e "
 "practicante das artes arcanas, ao que os seus seguidores chamaban “O "
-"Afouto”. Na batalla de Arcanclave, “O Afouto” e os seus exércitos "
+"afouto”. Na batalla de Arcanclave, “O afouto” e os seus exércitos "
 "enfrontáronse cunha especie salvaxe de demos feiticeiros, coñecidos como "
-"«Kah Ruuk». Rodeado por decenas de miles destes demos, “O Afouto” empregou a "
-"súa maxia para invocar a un poderoso elemental da terra —que por razóns que "
-"se descoñecen estaba en débeda con el—. O elemental fixo que enormes rochas "
-"das profundidades da terra erguesen, e con elas levantou a fortaleza máis "
-"grande que xamais viu o mundo. Foron miles os Kah Ruuk que pereceron "
+"«carúns». Rodeado por decenas de miles destes demos, “O afouto” empregou a "
+"súa maxia para invocar a un poderoso elemental da terra, que por razóns que "
+"se descoñecen estaba en débeda con el. O elemental fixo que enormes rochas "
+"das profundidades da terra se erguesen, e con elas levantou a fortaleza máis "
+"grande que xamais viu o mundo. Foron miles os carúns que pereceron "
 "intentando atravesar as súas murallas, e “O Afouto” e os seus homes lograron "
-"aquel día a vitoria. Máis de mil anos despois, a raíña guerreira Cynsaun I "
+"aquel día a vitoria. Máis de mil anos despois, a raíña guerreira Cinsaun I "
 "partiu cun clan de nigromantes das ruínas da cidadela de Arcanclave, e nos "
 "anos sucesivos converteron a rexión nun forte de resistencia militar. "
 "Rumoréase que poden quedar escondidos, perdidos entre os muros da cidadela, "
@@ -298,7 +375,7 @@ msgstr ""
 
 #. [side]
 #: data/multiplayer/scenarios/2p_Arcanclave_Citadel.cfg:22
-#: data/multiplayer/scenarios/2p_Fallenstar_Lake.cfg:38
+#: data/multiplayer/scenarios/2p_Fallenstar_Lake.cfg:33
 #: data/multiplayer/scenarios/2p_Silverhead_Crossing.cfg:32
 #: data/multiplayer/scenarios/3p_Alirok_Marsh.cfg:31
 #: data/multiplayer/scenarios/3p_Island_of_the_Horatii.cfg:31
@@ -328,7 +405,7 @@ msgstr "Leste"
 
 #. [side]
 #: data/multiplayer/scenarios/2p_Arcanclave_Citadel.cfg:35
-#: data/multiplayer/scenarios/2p_Fallenstar_Lake.cfg:27
+#: data/multiplayer/scenarios/2p_Fallenstar_Lake.cfg:22
 #: data/multiplayer/scenarios/2p_Silverhead_Crossing.cfg:21
 #: data/multiplayer/scenarios/3p_Alirok_Marsh.cfg:42
 #: data/multiplayer/scenarios/3p_Island_of_the_Horatii.cfg:42
@@ -503,20 +580,20 @@ msgstr ""
 "Oxsrrsk foi un poderoso oráculo saurio que, nunha incursión contra o clan "
 "rival Xraxss, adquiriu —dos arquivos do defunto oráculo Hesx-Rzzak— un "
 "fascinante manuscrito. Levaba por título «Neis o da mirada de granito», e "
-"falaba dunha criatura coñecida coma “Chak'kso Ney’yks”, un nome que na "
-"antiga lingua sauria significaba «O fillo maior de Chak'kso». Criase que "
+"falaba dunha criatura coñecida coma «Chak'kso Ney’yks», un nome que na "
+"antiga lingua sauria significaba «O fillo maior de Chak'kso». Críase que "
 "Chak'kso fora un poderoso semideus das profundidades, descrito coma «un gran "
 "demo da terra» nas historias dos elfos. Segundo estas historias, Chak'kso "
 "intentara unha vez transformar toda a vida do planeta en pedra, tal era o "
 "odio que sentía polas criaturas corpóreas. Ao final foi derrotado e atado "
 "mediante unha poderosa maxia, pero nos séculos posteriores ao seu desterro —"
-"a un lugar das profundidades—, un novo tipo de criatura comezou a aparecer "
+"a un lugar das profundidades— un novo tipo de criatura comezou a aparecer "
 "nas historias, unha criatura coa capacidade de converter calquera ser "
-"corpóreo en pedra. Houbo un período no que estes basiliscos —como se "
-"comezaron a coñecer— causaron estragos no mundo dos vivos, convertendo a "
+"corpóreo en pedra. Houbo un período no que estes «basiliscos» —como se "
+"comezaron a coñecer— causaron estragos no mundo dos vivos, convertendo "
 "milleiros de criaturas en pedra. Un a un, e non sen dificultade, os "
 "basiliscos foron derrotados. Todos menos un: o basilisco coñecido coma «O "
-"Ney'yks» —«O fillo maior», na lingua moderna—. Convencido de que podería "
+"Ney'yks», ou «O fillo maior» na lingua moderna. Convencido de que podería "
 "atopar a esta criatura e poñela ao seu servizo, Oxsrrsk partiu na súa busca…"
 
 # Adaptación, non tradución.
@@ -619,8 +696,8 @@ msgstr ""
 "Durante anos e anos habitou as profundidades destas augas, alimentándose dos "
 "moitos peixes, ras e sirénidos que entraban nos seus dominios. Era a súa "
 "lagoa, de ninguén máis, e o seu tamaño non era un obstáculo. Pero un día "
-"chegou o basilisco, e mirou á serpe aos ollos. E a serpe non morreu, pero xa "
-"non volveu vivir. Así foi como chegou o novo señor da lagoa."
+"chegou o basilisco, e cruzou a mirada coa serpe. E a serpe non morreu, pero "
+"xa non volveu vivir. Así foi como chegou o novo señor da lagoa."
 
 #. [unit]
 #: data/multiplayer/scenarios/2p_Caves_of_the_Basilisk.cfg:159
@@ -789,7 +866,7 @@ msgstr ""
 "A través de ondas e as canles rochosas,\n"
 "azul e branca,\n"
 "empuxou e tirou das augas\n"
-"e amosoulle aos peixes as estrelas fermosas.\n"
+"e mostroulle aos peixes as estrelas fermosas.\n"
 "Verde prata,\n"
 "con maxia\n"
 "que saía do seu espírito en forma de algas e croios,\n"
@@ -964,8 +1041,8 @@ msgstr ""
 "Os embates de atacantes xéranse ao chou e serán diferentes cada vez que se "
 "xogue o escenario.\n"
 "\n"
-"Aparecen desde os extremos norte, sur e oeste do mapa —pensa que é máis "
-"probábel que aparezan desde o extremo oeste—. Os embates de atacantes "
+"Aparecen desde os extremos norte, sur e oeste do mapa; pensa que é máis "
+"probábel que aparezan desde o extremo oeste. Os embates de atacantes "
 "aparecerán a intervalos máis ou menos regulares.\n"
 "\n"
 "O clima tamén cambiará ao chou, afectando ao terreo.\n"
@@ -1050,13 +1127,13 @@ msgid ""
 "the Den of Onis, hoping to unlock the strange and mysterious magics of its "
 "creators."
 msgstr ""
-"Estas peculiares covas foron outrora coñecidas coma “A cámara dos demos”, "
-"que foi a cidadela subterránea dos demos Kah Ruuk. Os Kah Ruuk eran unha "
-"clase de demos malvados e astutos que se alimentaban de persoas, e que "
-"aterraron ás xentes das terras orientais durante case catro séculos, antes "
-"de desaparecer completamente de Irïdia. Desde entón, moitas foron as "
-"faccións que competiron polo dominio da guarida dos demos, coa esperanza de "
-"descubrir a estraña e misteriosa maxia dos seus creadores."
+"Estas peculiares covas foron outrora coñecidas coma «A cámara dos demos», "
+"que foi a cidadela subterránea dos demos «carúns». Os carúns eran unha clase "
+"de demos malvados e astutos que se alimentaban de persoas, e que aterraron "
+"ás xentes das terras orientais durante case catro séculos, antes de "
+"desaparecer completamente de Irïdia. Desde entón, moitas foron as faccións "
+"que competiron polo dominio da guarida dos demos, coa esperanza de descubrir "
+"a estraña e misteriosa maxia dos seus creadores."
 
 #. [multiplayer]: id=multiplayer_elensefar_courtyard
 #: data/multiplayer/scenarios/2p_Elensefar_Courtyard.cfg:5
@@ -1121,100 +1198,100 @@ msgstr ""
 
 #. [unit]: type=Young Ogre, id=Baby Baby Bo
 #. [unit]: type=Young Ogre, id=Big Baby Bo
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:101
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:181
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:222
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:297
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:351
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:487
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:96
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:176
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:217
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:292
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:346
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:482
 msgid "Big Baby Bo"
 msgstr "Pequeno Bou"
 
 #. [unit]: type=Drake Fighter, id=Rawffus the Dim
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:115
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:110
 msgid "Rawffus the Dim"
 msgstr "Rufus “O escuro”"
 
 #. [unit]: type=Dwarvish Scout, id=Kolbur
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:168
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:163
 msgid "Kolbur"
 msgstr "Colbur"
 
 #. [unit]: type=Dwarvish Scout, id=Vilhelm Viskitynnyri
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:195
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:190
 msgid "Vilhelm Viskitynnyri"
 msgstr "Vilem Visquitiniri"
 
 #. [unit]: type=Woodsman, id=Clockwork Boy
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:257
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:269
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:717
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:729
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:252
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:264
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:712
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:724
 msgid "Clockwork Boy"
 msgstr "Rapaz mecánico"
 
 #. [unit]: type=Orcish Leader, id=Neki the Brutal
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:322
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:317
 msgid "Neki the Brutal"
 msgstr "Nequi “O bruto”"
 
 #. [unit]: type=Elvish Fighter, id=Drowsk Calbeht
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:365
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:360
 msgid "Drowsk Calbeht"
 msgstr "Drous Calbet"
 
 #. [unit]: id=Rzrrt the Dauntless, type=Soulless
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:428
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:423
 msgid "Rzrrt the Dauntless"
 msgstr "Riz “O Afouto”"
 
 #. [unit]: id=Sorrek, Chosen of Death, type=Skeleton
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:469
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:464
 msgid "Sorrek, Chosen of Death"
 msgstr "Sorec, “O Elixido da Morte”"
 
 #. [unit]: type=Young Ogre, id=Baby Baby Dro
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:561
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:641
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:682
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:757
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:811
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:947
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:556
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:636
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:677
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:752
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:806
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:942
 msgid "Big Baby Dro"
 msgstr "Pequeno Drou"
 
 #. [unit]: type=Drake Fighter, id=Gawffus the Dim
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:575
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:570
 msgid "Gawffus the Dim"
 msgstr "Gofus “O escuro”"
 
 #. [unit]: type=Dwarvish Scout, id=Rublok
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:628
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:623
 msgid "Rublok"
 msgstr "Rubloc"
 
 #. [unit]: type=Dwarvish Scout, id=Ulysses Mantyjuuri
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:655
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:650
 msgid "Ulysses Mantyjuuri"
 msgstr "Ulises Mantiuri"
 
 #. [unit]: type=Orcish Leader, id=Neki the Brute
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:782
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:777
 msgid "Neki the Brute"
 msgstr "Nequi “O bruto”"
 
 #. [unit]: type=Elvish Fighter, id=Claiomh Dubh
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:825
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:820
 msgid "Claiomh Dubh"
 msgstr "Claion Dub"
 
 #. [unit]: id=Tyxrrn the Dauntless, type=Soulless
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:888
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:883
 msgid "Tyxrrn the Dauntless"
 msgstr "Tison “O Valente”"
 
 #. [unit]: id=Rukhos, Chosen of Death, type=Skeleton
-#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:929
+#: data/multiplayer/scenarios/2p_Hornshark_Island.cfg:924
 msgid "Rukhos, Chosen of Death"
 msgstr "Rucos, “O Elixido da Morte”"
 
@@ -1258,7 +1335,7 @@ msgid ""
 "Players must traverse all manner of terrain in pursuit of victory on this "
 "multi-fronted duel map."
 msgstr ""
-"Os xogadores deben atravesar todo tipo de terreos para conseguir a victoria "
+"Os xogadores deben atravesar todo tipo de terreos para conseguir a vitoria "
 "neste mapa de duelo de varias frontes."
 
 #. [effect]: type=arcane
@@ -1683,8 +1760,8 @@ msgstr ""
 
 #. [side]
 #: data/multiplayer/scenarios/4p_King_of_the_Hill.cfg:32
-#: data/multiplayer/scenarios/4p_Loris_River.cfg:37
-#: data/multiplayer/scenarios/4p_Loris_River.cfg:48
+#: data/multiplayer/scenarios/4p_Loris_River.cfg:32
+#: data/multiplayer/scenarios/4p_Loris_River.cfg:43
 #: data/multiplayer/scenarios/4p_Siege_Castles.cfg:46
 #: data/multiplayer/scenarios/5p_Auction-X.cfg:33
 #: data/multiplayer/scenarios/5p_Forest_of_Fear.cfg:42
@@ -1696,8 +1773,8 @@ msgstr "Sueste"
 
 #. [side]
 #: data/multiplayer/scenarios/4p_King_of_the_Hill.cfg:56
-#: data/multiplayer/scenarios/4p_Loris_River.cfg:26
-#: data/multiplayer/scenarios/4p_Loris_River.cfg:59
+#: data/multiplayer/scenarios/4p_Loris_River.cfg:21
+#: data/multiplayer/scenarios/4p_Loris_River.cfg:54
 #: data/multiplayer/scenarios/4p_Siege_Castles.cfg:22
 #: data/multiplayer/scenarios/5p_Auction-X.cfg:57
 msgid "teamname^Northwest"
@@ -2109,11 +2186,14 @@ msgstr ""
 #. [scenario]: id=multiplayer_Random_Map
 #: data/multiplayer/scenarios/Random_Scenario.cfg:6
 #: data/multiplayer/scenarios/Random_Scenario.cfg:11
+#: data/multiplayer/scenarios/Random_YAMG_Scenario.cfg:11
 msgid "Random map"
 msgstr "Mapa ao chou"
 
 #. [multiplayer]: id=multiplayer_Random_Map
+#. [multiplayer]: id=multiplayer_Random_YAMG_Map
 #: data/multiplayer/scenarios/Random_Scenario.cfg:7
+#: data/multiplayer/scenarios/Random_YAMG_Scenario.cfg:7
 msgid ""
 "Randomly generated map. Note: random maps are often unbalanced, but if you "
 "have time, you can regenerate them until you get a good one."
@@ -2176,6 +2256,11 @@ msgstr ""
 "terreos nevados. Nótese que os mapas ao chou a miúdo están desequilibrados, "
 "pero se hai tempo, pode volverse xerar ata obter un aceptábel ou bo."
 
+#. [multiplayer]: id=multiplayer_Random_YAMG_Map
+#: data/multiplayer/scenarios/Random_YAMG_Scenario.cfg:6
+msgid "Random map by YAMG"
+msgstr "Mapa ao chou de YAMG"
+
 #. [multiplayer]: id=wesbench_ai
 #: data/multiplayer/scenarios/Wesbench_AI.cfg:9
 msgid "Wesnoth Benchmark: AI"
@@ -2224,12 +2309,6 @@ msgstr ""
 
 #~ msgid "Four factions contend for dominance over this watery settlement."
 #~ msgstr "Catro faccións se enfrontan para dominar este asentamento na auga."
-
-#~ msgid "Default + Khalifate"
-#~ msgstr "Preterm. co califato"
-
-#~ msgid "Khalifate"
-#~ msgstr "Califato"
 
 #~ msgid "Single player mode — uses the reduced strength spawns."
 #~ msgstr "Modo dun só xogador. Emprega ondas de atacantes de forza reducida."

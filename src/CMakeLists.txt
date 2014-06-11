@@ -20,7 +20,9 @@ include_directories(SYSTEM ${PANGOCAIRO_INCLUDE_DIRS} )
 include_directories(SYSTEM ${GETTEXT_INCLUDE_DIR} )
 include_directories(SYSTEM ${LIBDBUS_INCLUDE_DIRS} )
 include_directories(SYSTEM ${LIBINTL_INCLUDE_DIR} )
-include_directories(SYSTEM ${VORBISFILE_INCLUDE_DIR} )
+if(NOT ENABLE_PANDORA)
+	include_directories(SYSTEM ${VORBISFILE_INCLUDE_DIR} )
+endif(NOT ENABLE_PANDORA)
 
 #optional dependencies
 if(SDLIMAGE_INCLUDE_DIR)
@@ -91,8 +93,14 @@ set(game-external-libs
 	${PANGOCAIRO_LIBRARIES}
 	${FONTCONFIG_LIBRARIES}
 	${LIBDBUS_LIBRARIES}
-	${VORBISFILE_LIBRARIES}
 )
+
+if(NOT ENABLE_PANDORA)
+	set(game-external-libs
+		${game-external-libs}
+		${VORBISFILE_LIBRARIES}
+	)
+endif(NOT ENABLE_PANDORA)
 
 if(MSVC)
 	set(game-external-libs
@@ -206,6 +214,7 @@ set(libwesnoth-core_STAT_SRC
 	serialization/preprocessor.cpp
 	serialization/string_utils.cpp
 	serialization/tokenizer.cpp
+	serialization/unicode.cpp
 	serialization/validator.cpp
 )
 
@@ -250,38 +259,38 @@ endif()
 
 set(libwesnoth-lua_STAT_SRC
 	lua_jailbreak_exception.cpp
-	lua/lapi.c
-	lua/lbitlib.c
-	lua/lcode.c
-	lua/lcorolib.c
-	lua/lctype.c
-	lua/ldebug.c
-	lua/ldo.c
-	lua/ldump.c
-	lua/lfunc.c
-	lua/lgc.c
-	lua/llex.c
-	lua/lmem.c
-	lua/lobject.c
-	lua/lopcodes.c
-	lua/lparser.c
-	lua/lstate.c
-	lua/lstring.c
-	lua/ltable.c
-	lua/ltm.c
-	lua/lundump.c
-	lua/lvm.c
-	lua/lzio.c
-	lua/lauxlib.c
-	lua/lbaselib.c
-	lua/ldblib.c
-	lua/liolib.c
-	lua/lmathlib.c
-	lua/loslib.c
-	lua/ltablib.c
-	lua/lstrlib.c
-	lua/loadlib.c
-	lua/linit.c
+	lua/lapi.cpp
+	lua/lbitlib.cpp
+	lua/lcode.cpp
+	lua/lcorolib.cpp
+	lua/lctype.cpp
+	lua/ldebug.cpp
+	lua/ldo.cpp
+	lua/ldump.cpp
+	lua/lfunc.cpp
+	lua/lgc.cpp
+	lua/llex.cpp
+	lua/lmem.cpp
+	lua/lobject.cpp
+	lua/lopcodes.cpp
+	lua/lparser.cpp
+	lua/lstate.cpp
+	lua/lstring.cpp
+	lua/ltable.cpp
+	lua/ltm.cpp
+	lua/lundump.cpp
+	lua/lvm.cpp
+	lua/lzio.cpp
+	lua/lauxlib.cpp
+	lua/lbaselib.cpp
+	lua/ldblib.cpp
+	lua/liolib.cpp
+	lua/lmathlib.cpp
+	lua/loslib.cpp
+	lua/ltablib.cpp
+	lua/lstrlib.cpp
+	lua/loadlib.cpp
+	lua/linit.cpp
 )
 # We explicitly want lua compiled as C++ version, so this line is required:
 set_source_files_properties(${libwesnoth-lua_STAT_SRC} PROPERTIES LANGUAGE CXX)
@@ -308,26 +317,63 @@ add_library(wesnoth-lua ${LIBRARY_TYPE} EXCLUDE_FROM_ALL ${libwesnoth-lua_STAT_S
 
 # Disable the setting of -Wold-style-cast on some targets.
 # old style casts are not wanted by our coding style but some C based code
-# uses it. Force the flag off for these files. (We don't enable it in our
-# generic compiler flags, but allows people to do it.)
-if(CMAKE_COMPILER_IS_GNUCXX)
-	set_target_properties(wesnoth-lua
-		PROPERTIES COMPILE_FLAGS
-		"-Wno-old-style-cast -Wno-useless-cast"
+# uses it. Force the flag off for these files.
+if(HAS_COMPILER_FLAG_WOLD_STYLE_CAST)
+	set(CXX_FLAG_NO_OLD_STYLE_CAST "-Wno-old-style-cast")
+endif()
+
+if(HAS_COMPILER_FLAG_WUSELESS_CAST)
+	set(CXX_FLAG_NO_USELESS_CAST "-Wno-useless-cast")
+endif()
+
+set_target_properties(wesnoth-lua
+	PROPERTIES
+		COMPILE_FLAGS
+			"${CXX_FLAG_NO_OLD_STYLE_CAST} ${CXX_FLAG_NO_USELESS_CAST}"
+)
+set_source_files_properties(
+	clipboard.cpp
+	network.cpp
+	network_worker.cpp
+	PROPERTIES
+		COMPILE_FLAGS "${CXX_FLAG_NO_OLD_STYLE_CAST}"
+)
+set_source_files_properties(
+	desktop_util.cpp
+	text.cpp
+	PROPERTIES
+		COMPILE_FLAGS
+			"${CXX_FLAG_NO_OLD_STYLE_CAST} ${CXX_FLAG_NO_USELESS_CAST}"
+)
+if(LIBDBUS_FOUND)
+	set_source_files_properties(
+		game_display.cpp
+		PROPERTIES
+			COMPILE_FLAGS "${CXX_FLAG_NO_OLD_STYLE_CAST}"
 	)
-	set_source_files_properties(
-		clipboard.cpp
-		network.cpp
-		network_worker.cpp
-		PROPERTIES
-			COMPILE_FLAGS "-Wno-old-style-cast")
-	set_source_files_properties(
-		text.cpp
-		PROPERTIES
-			COMPILE_FLAGS "-Wno-old-style-cast -Wno-useless-cast")
-endif(CMAKE_COMPILER_IS_GNUCXX)
+endif()
 
 ########### Helper libraries ###############
+
+set(wesnoth-sdl_SRC
+	sdl/alpha.cpp
+	sdl/exception.cpp
+	sdl/rect.cpp
+	sdl/texture.cpp
+	sdl/window.cpp
+	sdl/utils.cpp
+)
+
+add_library(wesnoth-sdl
+	${LIBRARY_TYPE}
+	EXCLUDE_FROM_ALL
+	${wesnoth-sdl_SRC}
+)
+
+target_link_libraries(wesnoth-sdl
+	${SDL_LIBRARY}
+	${SDLIMAGE_LIBRARY}
+)
 
 # The main library is rather huge especially in debug mode, causing quite a bit
 # of overhead packing objects that haven't been changed for quite a while.
@@ -633,6 +679,7 @@ set(wesnoth-main_SRC
 	ai/lua/lua_object.cpp
 	ai/lua/unit_advancements_aspect.cpp
 	ai/manager.cpp
+	ai/recruitment/recruitment.cpp
 	ai/registry.cpp
 	ai/testing.cpp
 	ai/testing/aspect_attacks.cpp
@@ -647,8 +694,11 @@ set(wesnoth-main_SRC
 	attack_prediction_display.cpp
 	callable_objects.cpp
 	commandline_options.cpp
+	carryover.cpp
 	config_cache.cpp
+	config_assign.cpp
 	controller_base.cpp
+	desktop_util.cpp
 	dialogs.cpp
 	editor/action/action.cpp
 	editor/action/action_item.cpp
@@ -679,6 +729,7 @@ set(wesnoth-main_SRC
 	editor/toolkit/editor_toolkit.cpp
 	editor/map/context_manager.cpp
 	filechooser.cpp
+	flg_manager.cpp
 	floating_textbox.cpp
 	formula.cpp
 	formula_debugger.cpp
@@ -686,12 +737,18 @@ set(wesnoth-main_SRC
 	formula_function.cpp
 	formula_string_utils.cpp
 	formula_tokenizer.cpp
+	game_board.cpp
 	game_config_manager.cpp
 	game_controller.cpp
 	game_display.cpp
 	game_errors.cpp
-	game_events.cpp
-	game_instance.cpp
+	game_events/action_wml.cpp
+	game_events/conditional_wml.cpp
+	game_events/entity_location.cpp
+	game_events/handlers.cpp
+	game_events/menu_item.cpp
+	game_events/pump.cpp
+	game_events/wmi_container.cpp
 	game_preferences.cpp
 	game_preferences_display.cpp
 	gamestatus.cpp
@@ -707,6 +764,7 @@ set(wesnoth-main_SRC
 	gui/dialogs/addon_list.cpp
 	gui/dialogs/campaign_difficulty.cpp
 	gui/dialogs/campaign_selection.cpp
+	gui/dialogs/core_selection.cpp
 	gui/dialogs/chat_log.cpp
 	gui/dialogs/data_manage.cpp
 	gui/dialogs/debug_clock.cpp
@@ -714,6 +772,8 @@ set(wesnoth-main_SRC
 	gui/dialogs/edit_label.cpp
 	gui/dialogs/editor/custom_tod.cpp
 	gui/dialogs/editor/editor_edit_label.cpp
+	gui/dialogs/editor/editor_edit_side.cpp
+	gui/dialogs/editor/editor_edit_scenario.cpp
 	gui/dialogs/editor_generate_map.cpp
 	gui/dialogs/editor_new_map.cpp
 	gui/dialogs/editor_resize_map.cpp
@@ -722,6 +782,7 @@ set(wesnoth-main_SRC
 	gui/dialogs/formula_debugger.cpp
 	gui/dialogs/game_delete.cpp
 	gui/dialogs/game_load.cpp
+	gui/dialogs/game_paths.cpp
 	gui/dialogs/game_save.cpp
 	gui/dialogs/gamestate_inspector.cpp
 	gui/dialogs/language_selection.cpp
@@ -734,7 +795,6 @@ set(wesnoth-main_SRC
 	gui/dialogs/mp_cmd_wrapper.cpp
 	gui/dialogs/mp_connect.cpp
 	gui/dialogs/mp_create_game.cpp
-	gui/dialogs/mp_create_game_choose_mods.cpp
 	gui/dialogs/mp_create_game_set_password.cpp
 	gui/dialogs/mp_depcheck_confirm_change.cpp
 	gui/dialogs/mp_depcheck_select_new.cpp
@@ -744,17 +804,19 @@ set(wesnoth-main_SRC
 	gui/dialogs/network_transmission.cpp
 	gui/dialogs/popup.cpp
 	gui/dialogs/edit_text.cpp
+	gui/dialogs/screenshot_notification.cpp
 	gui/dialogs/simple_item_selector.cpp
+	gui/dialogs/theme_list.cpp
 	gui/dialogs/title_screen.cpp
 	gui/dialogs/transient_message.cpp
 	gui/dialogs/unit_attack.cpp
 	gui/dialogs/unit_create.cpp
+	gui/dialogs/wml_error.cpp
 	gui/dialogs/wml_message.cpp
 	halo.cpp
 	help.cpp
-	hotkey_preferences_display.cpp
+	hotkey/hotkey_preferences_display.cpp
 	intro.cpp
-	leader_list.cpp
 	leader_scroll_dialog.cpp
 	map.cpp
 	map_location.cpp
@@ -764,10 +826,14 @@ set(wesnoth-main_SRC
 	movetype.cpp
 	mp_depcheck.cpp
 	mp_game_settings.cpp
+	mp_game_utils.cpp
 	mp_options.cpp
 	multiplayer.cpp
+	multiplayer_configure.cpp
 	multiplayer_connect.cpp
+	multiplayer_connect_engine.cpp
 	multiplayer_create.cpp
+	multiplayer_create_engine.cpp
 	multiplayer_lobby.cpp
 	multiplayer_ui.cpp
 	multiplayer_wait.cpp
@@ -782,15 +848,23 @@ set(wesnoth-main_SRC
 	playmp_controller.cpp
 	playsingle_controller.cpp
 	playturn.cpp
+	playturn_network_adapter.cpp
 	portrait.cpp
+	random_new.cpp
+	random_new_deterministic.cpp
+	random_new_synced.cpp
 	replay.cpp
+	replay_helper.cpp
 	replay_controller.cpp
 	resources.cpp
 	save_blocker.cpp
+	save_index.cpp
+	saved_game.cpp
 	savegame.cpp
-	savegame_config.cpp
 	scripting/debug_lua.cpp
 	scripting/lua.cpp
+	scripting/lua_api.cpp
+	scripting/lua_types.cpp
 	settings.cpp
 	sha1.cpp
 	side_filter.cpp
@@ -800,6 +874,10 @@ set(wesnoth-main_SRC
 	storyscreen/interface.cpp
 	storyscreen/part.cpp
 	storyscreen/render.cpp
+	strftime.cpp
+	synced_checkup.cpp
+	synced_context.cpp
+	synced_commands.cpp
 	team.cpp
 	terrain_filter.cpp
 	tod_manager.cpp
@@ -834,15 +912,26 @@ set(wesnoth-main_SRC
 
 set(libwesnoth-game_STAT_SRC
 	arrow.cpp
-	builder.cpp
-	cavegen.cpp
 	clipboard.cpp
 	construct_dialog.cpp
 	cursor.cpp
 	display.cpp
+	display_context.cpp
 	events.cpp
 	font.cpp
-	hotkeys.cpp
+	format_time_summary.cpp
+  	generators/cavegen.cpp
+	generators/map_create.cpp
+	generators/mapgen.cpp
+	generators/mapgen_dialog.cpp
+	generators/yamg/ya_mapgen.cpp
+	generators/yamg/yamg_hex.cpp
+	generators/yamg/yamg_hexheap.cpp
+	generators/yamg/yamg_params.cpp
+	hotkey/command_executor.cpp
+	hotkey/hotkey_item.cpp
+	hotkey/hotkey_command.cpp
+	hotkey/hotkey_manager.cpp
 	image.cpp
 	image_modifications.cpp
 	joystick.cpp
@@ -851,10 +940,7 @@ set(libwesnoth-game_STAT_SRC
 	language.cpp
 	loadscreen.cpp
 	lobby_preferences.cpp
-	map_create.cpp
 	map_label.cpp
-	mapgen.cpp
-	mapgen_dialog.cpp
 	marked-up_text.cpp
 	minimap.cpp
 	pathfind/astarsearch.cpp
@@ -862,14 +948,14 @@ set(libwesnoth-game_STAT_SRC
 	preferences.cpp
 	preferences_display.cpp
 	race.cpp
-	random.cpp
 	reports.cpp
-	sdl_utils.cpp
 	show_dialog.cpp
+	simple_rng.cpp
 	sound.cpp
 	soundsource.cpp
 	sound_music_track.cpp
 	terrain.cpp
+	terrain_builder.cpp
 	terrain_translation.cpp
 	text.cpp
 	time_of_day.cpp
@@ -934,6 +1020,7 @@ if(ENABLE_GAME)
 			wesnoth-gui_widget_definition
 			wesnoth-gui1_widgets
 			wesnoth-schema_validator
+			wesnoth-sdl
 		)
 	else(ENABLE_TESTS)
 		set(wesnoth_SRC
@@ -1153,13 +1240,18 @@ set(exploder_SRC
 	tools/exploder_cutter.cpp
 	tools/exploder_composer.cpp
 	tools/dummy_video.cpp
-	sdl_utils.cpp
+	sdl/utils.cpp
 	tracer.cpp
 	loadscreen_empty.cpp
 )
 
 add_executable(exploder ${exploder_SRC})
-target_link_libraries(exploder wesnoth-core png ${tools-external-libs})
+target_link_libraries(exploder
+	wesnoth-core
+	wesnoth-sdl
+	png
+	${tools-external-libs}
+)
 set_target_properties(exploder PROPERTIES OUTPUT_NAME ${BINARY_PREFIX}exploder${BINARY_SUFFIX})
 
 install(TARGETS exploder DESTINATION ${BINDIR})
@@ -1169,18 +1261,24 @@ set(cutter_SRC
 	tools/exploder_utils.cpp
 	tools/exploder_cutter.cpp
 	tools/dummy_video.cpp
-	sdl_utils.cpp
+	sdl/utils.cpp
 	tracer.cpp
 	loadscreen_empty.cpp
 )
 
 add_executable(cutter ${cutter_SRC})
-target_link_libraries(cutter wesnoth-core png ${tools-external-libs})
+target_link_libraries(cutter
+	wesnoth-core
+	wesnoth-sdl
+	png
+	${tools-external-libs}
+)
 set_target_properties(cutter PROPERTIES OUTPUT_NAME ${BINARY_PREFIX}cutter${BINARY_SUFFIX})
 
 install(TARGETS cutter DESTINATION ${BINDIR})
 
 set(schema_generator_SRC
+	tools/dummy_video.cpp
 	tools/schema/schema_generator.cpp
 	tools/schema/sourceparser.cpp
 	tools/schema/error_container.cpp
@@ -1190,7 +1288,12 @@ set(schema_generator_SRC
 )
 
 add_executable(schema_generator ${schema_generator_SRC})
-target_link_libraries(schema_generator wesnoth-core ${tools-external-libs} ${Boost_REGEX_LIBRARY})
+target_link_libraries(schema_generator
+	wesnoth-core
+	wesnoth-sdl
+	${tools-external-libs}
+	${Boost_REGEX_LIBRARY}
+)
 set_target_properties(schema_generator PROPERTIES OUTPUT_NAME ${BINARY_PREFIX}schema_generator${BINARY_SUFFIX})
 
 install(TARGETS schema_generator DESTINATION ${BINDIR})
@@ -1199,6 +1302,7 @@ set(schema_validator_SRC
 	tools/validator/validator_tool.cpp
 	serialization/schema_validator.cpp
 	serialization/validator.cpp
+	tools/dummy_video.cpp
 	tools/schema/tag.cpp
 	filesystem.cpp
 	config_cache.cpp
@@ -1207,7 +1311,11 @@ set(schema_validator_SRC
 )
 
 add_executable(schema_validator ${schema_validator_SRC})
-target_link_libraries(schema_validator wesnoth-core ${common-external-libs})
+target_link_libraries(schema_validator
+	wesnoth-core
+	wesnoth-sdl
+	${common-external-libs}
+)
 set_target_properties(schema_validator PROPERTIES OUTPUT_NAME ${BINARY_PREFIX}schema_validator${BINARY_SUFFIX}
 							COMPILE_DEFINITIONS VALIDATION_ERRORS_LOG)
 
@@ -1220,18 +1328,53 @@ set(wesmage_SRC
 	wesmage/options.cpp
 	tools/dummy_video.cpp
 	tools/exploder_utils.cpp
-	sdl_utils.cpp
+	sdl/utils.cpp
 	tracer.cpp
 	loadscreen_empty.cpp
 )
 
 add_executable(wesmage ${wesmage_SRC})
-target_link_libraries(wesmage wesnoth-core png ${tools-external-libs})
+target_link_libraries(wesmage
+	wesnoth-core
+	wesnoth-sdl
+	png
+	${tools-external-libs}
+)
 set_target_properties(wesmage PROPERTIES OUTPUT_NAME ${BINARY_PREFIX}wesmage${BINARY_SUFFIX})
 
 install(TARGETS wesmage DESTINATION ${BINDIR})
 
 endif(ENABLE_TOOLS)
+
+
+########### SDL2 test tool  ###############
+
+if(ENABLE_SDL2_TOOLS)
+
+	add_executable(sdl2
+		tools/sdl2/sdl2.cpp
+		tools/sdl2/window.cpp
+	)
+
+	target_link_libraries(sdl2
+		wesnoth-sdl
+		wesnoth-core
+		wesnoth-game
+		wesnoth-gui_types
+		wesnoth-gui_event
+		wesnoth-gui_iterator
+		wesnoth-gui_placer
+		wesnoth-gui_tooltip
+		wesnoth-gui_widget
+		wesnoth-gui_widget_definition
+		wesnoth-gui1_widgets
+		wesnoth-schema_validator
+		wesnoth-lua
+		${game-external-libs}
+	)
+
+endif()
+
 ########### Unit tests ###############
 
 if(ENABLE_UMCD_TESTS)
@@ -1265,32 +1408,36 @@ if(ENABLE_TESTS)
 
 	set(test_SRC
 		tests/floating_point_emulation.cpp
+		tests/gui/iterator.cpp
+		tests/gui/fire_event.cpp
+		tests/gui/test_drop_target.cpp
+		tests/gui/test_gui2.cpp
+		tests/gui/test_save_dialog.cpp
+		tests/gui/visitor.cpp
 		tests/main.cpp
-		tests/utils/fake_display.cpp
-		tests/utils/fake_event_source.cpp
-		tests/utils/game_config_manager.cpp
-		tests/utils/play_scenario.cpp
 		tests/test_addons.cpp
 		tests/test_commandline_options.cpp
+		tests/test_config.cpp
 		tests/test_config_cache.cpp
 		tests/test_formula_ai.cpp
 		tests/test_formula_function.cpp
 		tests/test_image_modifications.cpp
 		tests/test_lexical_cast.cpp
+		tests/test_map_location.cpp
+		tests/test_make_enum.cpp
+		tests/test_mp_connect.cpp
 		tests/test_network_worker.cpp
+		tests/test_sdl_utils.cpp
+		tests/test_serialization.cpp
 		tests/test_team.cpp
 		tests/test_unit_map.cpp
 		tests/test_util.cpp
-		tests/test_sdl_utils.cpp
-		tests/test_serialization.cpp
 		tests/test_version.cpp
 		tests/test_whiteboard_side_actions.cpp
-		tests/gui/iterator.cpp
-		tests/gui/fire_event.cpp
-		tests/gui/test_drop_target.cpp
-		tests/gui/test_gui2.cpp
-		tests/gui/visitor.cpp
-		tests/gui/test_save_dialog.cpp
+		tests/utils/fake_display.cpp
+		tests/utils/fake_event_source.cpp
+		tests/utils/game_config_manager.cpp
+		tests/utils/play_scenario.cpp
 	)
 	if(ENABLE_GAME)
 		set(test_LIB
@@ -1305,6 +1452,7 @@ if(ENABLE_TESTS)
 			wesnoth-gui_widget_definition
 			wesnoth-gui1_widgets
 			wesnoth-schema_validator
+			wesnoth-sdl
 			wesnoth-lua
 		)
 	else(ENABLE_GAME)
@@ -1325,6 +1473,7 @@ if(ENABLE_TESTS)
 			wesnoth-core
 			wesnoth-game
 			wesnoth-lua
+			wesnoth-sdl
 		)
 	endif(ENABLE_GAME)
 
@@ -1347,13 +1496,18 @@ if(ENABLE_TESTS)
 			tests/create_images.cpp
 			tools/dummy_video.cpp
 			tools/exploder_utils.cpp
-			sdl_utils.cpp
+			sdl/utils.cpp
 			tracer.cpp
 			loadscreen_empty.cpp
 		)
 
 		add_executable(create_images ${create_images_SRC})
-		target_link_libraries(create_images wesnoth-core png ${tools-external-libs})
+		target_link_libraries(create_images
+			wesnoth-core
+			wesnoth-sdl
+			png
+			${tools-external-libs}
+		)
 		set_target_properties(create_images PROPERTIES OUTPUT_NAME ${BINARY_PREFIX}create_images${BINARY_SUFFIX})
 	endif(ENABLE_TOOLS)
 

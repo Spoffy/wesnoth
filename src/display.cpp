@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -17,13 +17,11 @@
  * Routines to set up the display, scroll and zoom the map.
  */
 
-#include "builder.hpp"
 #include "cursor.hpp"
 #include "display.hpp"
 #include "game_preferences.hpp"
 #include "gettext.hpp"
 #include "halo.hpp"
-#include "hotkeys.hpp"
 #include "language.hpp"
 #include "log.hpp"
 #include "marked-up_text.hpp"
@@ -31,6 +29,7 @@
 #include "map_label.hpp"
 #include "minimap.hpp"
 #include "reports.hpp"
+#include "terrain_builder.hpp"
 #include "text.hpp"
 #include "time_of_day.hpp"
 #include "tooltips.hpp"
@@ -39,6 +38,7 @@
 #include "resources.hpp"
 #include "whiteboard/manager.hpp"
 #include "overlay.hpp"
+#include "synced_context.hpp"
 
 #include "SDL_image.h"
 
@@ -76,25 +76,41 @@ namespace {
 
 int display::last_zoom_ = SmallZoom;
 
+void display::parse_team_overlays()
+{
+	const team& curr_team = dc_->teams()[playing_team()];
+	const team& prev_team = dc_->teams()[playing_team()-1 < dc_->teams().size() ? playing_team()-1 : dc_->teams().size()-1];
+	BOOST_FOREACH(const game_display::overlay_map::value_type i, *overlays_) {
+		const overlay& ov = i.second;
+		if (!ov.team_name.empty() &&
+			((ov.team_name.find(curr_team.team_name()) + 1) != 0) !=
+			((ov.team_name.find(prev_team.team_name()) + 1) != 0))
+		{
+			invalidate(i.first);
+		}
+	}
+}
+
+
 void display::add_overlay(const map_location& loc, const std::string& img, const std::string& halo,const std::string& team_name, bool visible_under_fog)
 {
 	const int halo_handle = halo::add(get_location_x(loc) + hex_size() / 2,
 			get_location_y(loc) + hex_size() / 2, halo, loc);
 
 	const overlay item(img, halo, halo_handle, team_name, visible_under_fog);
-	overlays_.insert(overlay_map::value_type(loc,item));
+	overlays_->insert(overlay_map::value_type(loc,item));
 }
 
 void display::remove_overlay(const map_location& loc)
 {
 	typedef overlay_map::const_iterator Itor;
-	std::pair<Itor,Itor> itors = overlays_.equal_range(loc);
+	std::pair<Itor,Itor> itors = overlays_->equal_range(loc);
 	while(itors.first != itors.second) {
 		halo::remove(itors.first->second.halo_handle);
 		++itors.first;
 	}
 
-	overlays_.erase(loc);
+	overlays_->erase(loc);
 }
 
 void display::remove_single_overlay(const map_location& loc, const std::string& toDelete)
@@ -102,14 +118,14 @@ void display::remove_single_overlay(const map_location& loc, const std::string& 
 	//Iterate through the values with key of loc
 	typedef overlay_map::iterator Itor;
 	overlay_map::iterator iteratorCopy;
-	std::pair<Itor,Itor> itors = overlays_.equal_range(loc);
+	std::pair<Itor,Itor> itors = overlays_->equal_range(loc);
 	while(itors.first != itors.second) {
 		//If image or halo of overlay struct matches toDelete, remove the overlay
 		if(itors.first->second.image == toDelete || itors.first->second.halo == toDelete) {
 			iteratorCopy = itors.first;
 			++itors.first;
 			halo::remove(iteratorCopy->second.halo_handle);
-			overlays_.erase(iteratorCopy);
+			overlays_->erase(iteratorCopy);
 		}
 		else {
 			++itors.first;
@@ -120,13 +136,11 @@ void display::remove_single_overlay(const map_location& loc, const std::string& 
 
 
 
-display::display(unit_map* units, CVideo& video, const gamemap* map, const std::vector<team>* t,const config& theme_cfg, const config& level) :
-	units_(units),
+display::display(const display_context * dc, CVideo& video, const config& theme_cfg, const config& level) :
+	dc_(dc),
 	exclusive_unit_draw_requests_(),
 	screen_(video),
-	map_(map),
 	currentTeam_(0),
-	teams_(t),
 	viewpoint_(NULL),
 	energy_bar_rects_(),
 	xpos_(0),
@@ -134,9 +148,9 @@ display::display(unit_map* units, CVideo& video, const gamemap* map, const std::
 	view_locked_(false),
 	theme_(theme_cfg, screen_area()),
 	zoom_(DefaultZoom),
-	builder_(new terrain_builder(level, map, theme_.border().tile_image)),
+	builder_(new terrain_builder(level, &dc_->map(), theme_.border().tile_image)),
 	minimap_(NULL),
-	minimap_location_(empty_rect),
+	minimap_location_(sdl::empty_rect),
 	redrawMinimap_(false),
 	redraw_background_(true),
 	invalidateAll_(true),
@@ -172,6 +186,10 @@ display::display(unit_map* units, CVideo& video, const gamemap* map, const std::
 	activeTeam_(0),
 	drawing_buffer_(),
 	map_screenshot_(false),
+	reach_map_(),
+	reach_map_old_(),
+	reach_map_changed_(true),
+	overlays_(NULL),
 	fps_handle_(0),
 	invalidated_hexes_(0),
 	drawn_hexes_(0),
@@ -188,6 +206,9 @@ display::display(unit_map* units, CVideo& video, const gamemap* map, const std::
 #endif
 {
 	singleton_ = this;
+	resources::disp_context = dc_;
+
+	blindfold_ctr_ = 0;
 
 	read(level.child_or_empty("display"));
 
@@ -230,54 +251,74 @@ display::~display()
 void display::init_flags() {
 
 	flags_.clear();
-	if (!teams_) return;
-	flags_.reserve(teams_->size());
+	if (!dc_) return;
+	flags_.resize(dc_->teams().size());
 
 	std::vector<std::string> side_colors;
-	side_colors.reserve(teams_->size());
+	side_colors.reserve(dc_->teams().size());
 
-	for(size_t i = 0; i != teams_->size(); ++i) {
+	for(size_t i = 0; i != dc_->teams().size(); ++i) {
 		std::string side_color = team::get_side_color_index(i+1);
 		side_colors.push_back(side_color);
-		std::string flag = (*teams_)[i].flag();
-		std::string old_rgb = game_config::flag_rgb;
-		std::string new_rgb = side_color;
-
-		if(flag.empty()) {
-			flag = game_config::images::flag;
-		}
-
-		LOG_DP << "Adding flag for team " << i << " from animation " << flag << "\n";
-
-		// Must recolor flag image
-		animated<image::locator> temp_anim;
-
-		std::vector<std::string> items = utils::square_parenthetical_split(flag);
-		std::vector<std::string>::const_iterator itor = items.begin();
-		for(; itor != items.end(); ++itor) {
-			const std::vector<std::string>& items = utils::split(*itor, ':');
-			std::string str;
-			int time;
-
-			if(items.size() > 1) {
-				str = items.front();
-				time = atoi(items.back().c_str());
-			} else {
-				str = *itor;
-				time = 100;
-			}
-			std::stringstream temp;
-			temp << str << "~RC(" << old_rgb << ">"<< new_rgb << ")";
-			image::locator flag_image(temp.str());
-			temp_anim.add_frame(time, flag_image);
-		}
-		flags_.push_back(temp_anim);
-
-		flags_.back().start_animation(rand()%flags_.back().get_end_time(), true);
+		init_flags_for_side_internal(i, side_color);
 	}
 	image::set_team_colors(&side_colors);
 }
 
+void display::reinit_flags_for_side(size_t side)
+{
+	if (!dc_ || side >= dc_->teams().size()) {
+		ERR_DP << "Cannot rebuild flags for inexistent or unconfigured side " << side << '\n';
+		return;
+	}
+
+	init_flags_for_side_internal(side, team::get_side_color_index(side + 1));
+}
+
+void display::init_flags_for_side_internal(size_t n, const std::string& side_color)
+{
+	assert(dc_ != NULL);
+	assert(n < dc_->teams().size());
+	assert(n < flags_.size());
+
+	std::string flag = dc_->teams()[n].flag();
+	std::string old_rgb = game_config::flag_rgb;
+	std::string new_rgb = side_color;
+
+	if(flag.empty()) {
+		flag = game_config::images::flag;
+	}
+
+	LOG_DP << "Adding flag for team " << n << " from animation " << flag << "\n";
+
+	// Must recolor flag image
+	animated<image::locator> temp_anim;
+
+	std::vector<std::string> items = utils::square_parenthetical_split(flag);
+	std::vector<std::string>::const_iterator itor = items.begin();
+	for(; itor != items.end(); ++itor) {
+		const std::vector<std::string>& items = utils::split(*itor, ':');
+		std::string str;
+		int time;
+
+		if(items.size() > 1) {
+			str = items.front();
+			time = atoi(items.back().c_str());
+		} else {
+			str = *itor;
+			time = 100;
+		}
+		std::stringstream temp;
+		temp << str << "~RC(" << old_rgb << ">"<< new_rgb << ")";
+		image::locator flag_image(temp.str());
+		temp_anim.add_frame(time, flag_image);
+	}
+
+	animated<image::locator>& f = flags_[n];
+
+	f = temp_anim;
+	f.start_animation(rand() % f.get_end_time(), true);
+}
 
 struct is_energy_color {
 	bool operator()(Uint32 color) const { return (color&0xFF000000) > 0x10000000 &&
@@ -294,9 +335,9 @@ surface display::get_flag(const map_location& loc)
 		return surface(NULL);
 	}
 
-	for(size_t i = 0; i != teams_->size(); ++i) {
-		if((*teams_)[i].owns_village(loc) &&
-		  (!fogged(loc) || !(*teams_)[currentTeam_].is_enemy(i+1)))
+	for(size_t i = 0; i != dc_->teams().size(); ++i) {
+		if(dc_->teams()[i].owns_village(loc) &&
+		  (!fogged(loc) || !dc_->teams()[currentTeam_].is_enemy(i+1)))
 		{
 			flags_[i].update_last_draw_time();
 			const image::locator &image_flag = animate_map_ ?
@@ -310,12 +351,12 @@ surface display::get_flag(const map_location& loc)
 
 void display::set_team(size_t teamindex, bool show_everything)
 {
-	assert(teamindex < teams_->size());
+	assert(teamindex < dc_->teams().size());
 	currentTeam_ = teamindex;
 	if (!show_everything)
 	{
-		labels().set_team(&(*teams_)[teamindex]);
-		viewpoint_ = &(*teams_)[teamindex];
+		labels().set_team(&dc_->teams()[teamindex]);
+		viewpoint_ = &dc_->teams()[teamindex];
 	}
 	else
 	{
@@ -329,7 +370,7 @@ void display::set_team(size_t teamindex, bool show_everything)
 
 void display::set_playing_team(size_t teamindex)
 {
-	assert(teamindex < teams_->size());
+	assert(teamindex < dc_->teams().size());
 	activeTeam_ = teamindex;
 	invalidate_game_status();
 }
@@ -365,7 +406,7 @@ const SDL_Rect& display::calculate_energy_bar(surface surf)
 		}
 	}
 
-	const SDL_Rect res = create_rect(first_col
+	const SDL_Rect res = sdl::create_rect(first_col
 			, first_row
 			, last_col-first_col
 			, last_row+1-first_row);
@@ -403,7 +444,7 @@ void display::draw_bar(const std::string& image, int xpos, int ypos,
 	else {
 	  const fixed_t xratio = fxpdiv(surf->w,bar_surf->w);
 	  const fixed_t yratio = fxpdiv(surf->h,bar_surf->h);
-	  const SDL_Rect scaled_bar_loc = create_rect(
+	  const SDL_Rect scaled_bar_loc = sdl::create_rect(
 			    fxptoi(unscaled_bar_loc. x * xratio)
 			  , fxptoi(unscaled_bar_loc. y * yratio + 127)
 			  , fxptoi(unscaled_bar_loc. w * xratio + 255)
@@ -424,8 +465,8 @@ void display::draw_bar(const std::string& image, int xpos, int ypos,
 
 	const size_t skip_rows = bar_loc.h - height;
 
-	SDL_Rect top = create_rect(0, 0, surf->w, bar_loc.y);
-	SDL_Rect bot = create_rect(0, bar_loc.y + skip_rows, surf->w, 0);
+	SDL_Rect top = sdl::create_rect(0, 0, surf->w, bar_loc.y);
+	SDL_Rect bot = sdl::create_rect(0, bar_loc.y + skip_rows, surf->w, 0);
 	bot.h = surf->w - bot.y;
 
 	drawing_buffer_add(LAYER_UNIT_BAR, loc, xpos, ypos, surf, top);
@@ -436,8 +477,8 @@ void display::draw_bar(const std::string& image, int xpos, int ypos,
 	if(unfilled < height && alpha >= ftofxp(0.3)) {
 		const Uint8 r_alpha = std::min<unsigned>(unsigned(fxpmult(alpha,255)),255);
 		surface filled_surf = create_compatible_surface(bar_surf, bar_loc.w, height - unfilled);
-		SDL_Rect filled_area = create_rect(0, 0, bar_loc.w, height-unfilled);
-		sdl_fill_rect(filled_surf,&filled_area,SDL_MapRGBA(bar_surf->format,col.r,col.g,col.b, r_alpha));
+		SDL_Rect filled_area = sdl::create_rect(0, 0, bar_loc.w, height-unfilled);
+		sdl::fill_rect(filled_surf,&filled_area,SDL_MapRGBA(bar_surf->format,col.r,col.g,col.b, r_alpha));
 		drawing_buffer_add(LAYER_UNIT_BAR, loc, xpos + bar_loc.x, ypos + bar_loc.y + unfilled, filled_surf);
 	}
 }
@@ -521,20 +562,24 @@ void display::reload_map()
 	builder_->reload_map();
 }
 
-void display::change_map(const gamemap* m)
+void display::change_display_context(const display_context * dc) 
 {
-	map_ = m;
-	builder_->change_map(m);
+	dc_ = dc;
+ 	builder_->change_map(&dc_->map()); //TODO: Should display_context own and initalize the builder object?
+	resources::disp_context = dc_;
 }
 
-void display::change_units(unit_map* umap)
+void display::blindfold(bool value)
 {
-	units_ = umap;
+	if(value == true)
+		++blindfold_ctr_;
+	else
+		--blindfold_ctr_;
 }
 
-void display::change_teams(const std::vector<team>* teams)
+bool display::is_blindfolded() const
 {
-	teams_ = teams;
+	return blindfold_ctr_ > 0;
 }
 
 
@@ -595,7 +640,7 @@ bool display::outside_area(const SDL_Rect& area, const int x, const int y) const
 const map_location display::hex_clicked_on(int xclick, int yclick) const
 {
 	const SDL_Rect& rect = map_area();
-	if(point_in_rect(xclick,yclick,rect) == false) {
+	if(sdl::point_in_rect(xclick,yclick,rect) == false) {
 		return map_location();
 	}
 
@@ -743,7 +788,7 @@ map_location display::minimap_location_on(int x, int y)
 	//TODO: don't return location for this,
 	// instead directly scroll to the clicked pixel position
 
-	if (!point_in_rect(x, y, minimap_area())) {
+	if (!sdl::point_in_rect(x, y, minimap_area())) {
 		return map_location();
 	}
 
@@ -875,7 +920,7 @@ void display::create_buttons()
 		if (!i->tooltip().empty()){
 			s.set_tooltip_string(i->tooltip());
 		}
-		if(rects_overlap(s.location(),map_outside_area())) {
+		if(sdl::rects_overlap(s.location(),map_outside_area())) {
 			s.set_volatile(true);
 		}
 
@@ -896,7 +941,7 @@ void display::create_buttons()
 
 		if (!i->is_button()) continue;
 
-		gui::button b(screen_, i->title(), gui::button::TYPE_TURBO, i->image(),
+		gui::button b(screen_, i->title(), gui::button::TYPE_PRESS, i->image(),
 				gui::button::DEFAULT_SPACE, true, i->overlay());
 		DBG_DP << "drawing button " << i->get_id() << "\n";
 		b.set_id(i->get_id());
@@ -905,7 +950,7 @@ void display::create_buttons()
 		if (!i->tooltip().empty()){
 			b.set_tooltip_string(i->tooltip());
 		}
-		if(rects_overlap(b.location(),map_outside_area())) {
+		if(sdl::rects_overlap(b.location(),map_outside_area())) {
 			b.set_volatile(true);
 		}
 
@@ -927,7 +972,7 @@ void display::create_buttons()
 		if (!i->tooltip(0).empty()){
 			b.set_tooltip_string(i->tooltip(0));
 		}
-		if(rects_overlap(b.location(),map_outside_area())) {
+		if(sdl::rects_overlap(b.location(),map_outside_area())) {
 			b.set_volatile(true);
 		}
 
@@ -992,17 +1037,27 @@ std::vector<surface> display::get_fog_shroud_images(const map_location& loc, ima
 		}
 
 		if(start == 6) {
+			// Completely surrounded by fog or shroud. This might have
+			// a special graphic.
+			const std::string name = *image_prefix[v] + "-all.png";
+			if ( image::exists(name) ) {
+				names.push_back(name);
+				// Proceed to the next visibility (fog -> shroud -> clear).
+				continue;
+			}
+			// No special graphic found. We'll just combine some other images
+			// and hope it works out.
 			start = 0;
 		}
 
 		// Find all the directions overlap occurs from
-		for(int i = (start+1)%6, n = 0; i != start && n != 6; ++n) {
+		for (int i = (start+1)%6, cap1 = 0;  i != start && cap1 != 6;  ++cap1) {
 			if(tiles[i] == v) {
 				std::ostringstream stream;
 				std::string name;
 				stream << *image_prefix[v];
 
-				for(int n = 0; v == tiles[i] && n != 6; i = (i+1)%6, ++n) {
+				for (int cap2 = 0;  v == tiles[i] && cap2 != 6;  i = (i+1)%6, ++cap2) {
 					stream << get_direction(i);
 
 					if(!image::exists(stream.str() + ".png")) {
@@ -1091,7 +1146,7 @@ std::vector<surface> display::get_terrain_images(const map_location &loc,
 
 	if(terrains != NULL) {
 		// Cache the offmap name.
-		// Since it is themeabel it can change,
+		// Since it is themeable it can change,
 		// so don't make it static.
 		const std::string off_map_name = "terrain/" + theme_.border().tile_image;
 		for(std::vector<animated<image::locator> >::const_iterator it =
@@ -1233,7 +1288,7 @@ void display::drawing_buffer_commit()
 			// Note that dstrect can be changed by sdl_blit
 			// and so a new instance should be initialized
 			// to pass to each call to sdl_blit.
-			SDL_Rect dstrect = create_rect(blit.x(), blit.y(), 0, 0);
+			SDL_Rect dstrect = sdl::create_rect(blit.x(), blit.y(), 0, 0);
 			SDL_Rect srcrect = blit.clip();
 			SDL_Rect *srcrectArg = (srcrect.x | srcrect.y | srcrect.w | srcrect.h)
 				? &srcrect : NULL;
@@ -1280,7 +1335,7 @@ void display::flip()
 		SDL_Rect r = map_outside_area(); // Use frameBuffer to also test the UI
 		const Uint32 color =  SDL_MapRGBA(video().getSurface()->format,0,0,0,255);
 		// Adjust the alpha if you want to balance cpu-cost / smooth sunset
-		fill_rect_alpha(r, color, 1, frameBuffer);
+		sdl::fill_rect_alpha(r, color, 1, frameBuffer);
 		update_rect(r);
 	}
 
@@ -1413,7 +1468,13 @@ static void draw_label(CVideo& video, surface target, const theme::label& label)
 
 void display::draw_all_panels()
 {
-	surface const screen(screen_.getSurface());
+	const surface& screen(screen_.getSurface());
+
+	/*
+	 * The minimap is also a panel, force it to update its contents.
+	 * This is required when the size of the minimap has been modified.
+	 */
+	recalculate_minimap();
 
 	const std::vector<theme::panel>& panels = theme_.panels();
 	for(std::vector<theme::panel>::const_iterator p = panels.begin(); p != panels.end(); ++p) {
@@ -1442,7 +1503,7 @@ static void draw_background(surface screen, const SDL_Rect& area, const std::str
 
 	for(unsigned int w = 0, w_off = area.x; w < w_count; ++w, w_off += width) {
 		for(unsigned int h = 0, h_off = area.y; h < h_count; ++h, h_off += height) {
-			SDL_Rect clip = create_rect(w_off, h_off, 0, 0);
+			SDL_Rect clip = sdl::create_rect(w_off, h_off, 0, 0);
 			sdl_blit(background, NULL, screen, &clip);
 		}
 	}
@@ -1482,9 +1543,9 @@ void display::render_image(int x, int y, const display::tdrawing_layer drawing_l
 	if (image==NULL)
 		return;
 
-	SDL_Rect image_rect = create_rect(x, y, image->w, image->h);
+	SDL_Rect image_rect = sdl::create_rect(x, y, image->w, image->h);
 	SDL_Rect clip_rect = map_area();
-	if (!rects_overlap(image_rect, clip_rect))
+	if (!sdl::rects_overlap(image_rect, clip_rect))
 		return;
 
 	surface surf(image);
@@ -1512,7 +1573,7 @@ void display::render_image(int x, int y, const display::tdrawing_layer drawing_l
 	}
 
 	if(surf == NULL) {
-		ERR_DP << "surface lost...\n";
+		ERR_DP << "surface lost..." << std::endl;
 		return;
 	}
 
@@ -1520,7 +1581,7 @@ void display::render_image(int x, int y, const display::tdrawing_layer drawing_l
 		// divide the surface into 2 parts
 		const int submerge_height = std::max<int>(0, surf->h*(1.0-submerged));
 		const int depth = surf->h - submerge_height;
-		SDL_Rect srcrect = create_rect(0, 0, surf->w, submerge_height);
+		SDL_Rect srcrect = sdl::create_rect(0, 0, surf->w, submerge_height);
 		drawing_buffer_add(drawing_layer, loc, x, y, surf, srcrect);
 
 		if(submerge_height != surf->h) {
@@ -1548,6 +1609,7 @@ void display::select_hex(map_location hex)
 	invalidate(selectedHex_);
 	selectedHex_ = hex;
 	invalidate(selectedHex_);
+	recalculate_minimap();
 }
 
 void display::highlight_hex(map_location hex)
@@ -1695,8 +1757,7 @@ void display::enable_menu(const std::string& item, bool enable)
 		if(hasitem != menu->items().end()) {
 			const size_t index = menu - theme_.menus().begin();
 			if(index >= menu_buttons_.size()) {
-				assert(false);
-				return;
+				continue;
 			}
 			menu_buttons_[index].enable(enable);
 		}
@@ -1787,13 +1848,13 @@ void display::draw_minimap()
 	}
 
 	if(minimap_ == NULL || minimap_->w > area.w || minimap_->h > area.h) {
-		minimap_ = image::getMinimap(area.w, area.h, get_map(), viewpoint_);
+		minimap_ = image::getMinimap(area.w, area.h, get_map(), viewpoint_, (selectedHex_.valid() && !is_blindfolded()) ? &reach_map_ : NULL);
 		if(minimap_ == NULL) {
 			return;
 		}
 	}
 
-	const surface screen(screen_.getSurface());
+	const surface& screen(screen_.getSurface());
 	clip_rect_setter clip_setter(screen, &area);
 
 	SDL_Color back_color = {31,31,23,255};
@@ -1827,7 +1888,7 @@ void display::draw_minimap()
 	int view_h = static_cast<int>(map_out_rect.h * yscaling);
 
 	const Uint32 box_color = SDL_MapRGB(minimap_->format,0xFF,0xFF,0xFF);
-	draw_rectangle(minimap_location_.x + view_x - 1,
+	sdl::draw_rectangle(minimap_location_.x + view_x - 1,
                    minimap_location_.y + view_y - 1,
                    view_w + 2, view_h + 2,
                    box_color, screen);
@@ -1835,12 +1896,14 @@ void display::draw_minimap()
 
 void display::draw_minimap_units()
 {
+	if (!preferences::minimap_draw_units() || is_blindfolded()) return;
+
 	double xscaling = 1.0 * minimap_location_.w / get_map().w();
 	double yscaling = 1.0 * minimap_location_.h / get_map().h();
 
-	for(unit_map::const_iterator u = units_->begin(); u != units_->end(); ++u) {
+	for(unit_map::const_iterator u = dc_->units().begin(); u != dc_->units().end(); ++u) {
 		if (fogged(u->get_location()) ||
-		    ((*teams_)[currentTeam_].is_enemy(u->side()) &&
+		    (dc_->teams()[currentTeam_].is_enemy(u->side()) &&
 		     u->invisible(u->get_location())) ||
 			 u->get_hidden()) {
 			continue;
@@ -1851,26 +1914,21 @@ void display::draw_minimap_units()
 
 		if (preferences::minimap_movement_coding()) {
 
-			if ((*teams_)[currentTeam_].is_enemy(side)) {
-				col = team::get_minimap_color(5);
+			if (dc_->teams()[currentTeam_].is_enemy(side)) {
+				col = int_to_color(game_config::color_info(preferences::enemy_color()).rep());
 			} else {
 
 				if (currentTeam_ +1 == static_cast<unsigned>(side)) {
 
-					if (u->movement_left() == u->total_movement()) {
-						col = team::get_minimap_color(3);
-					} else {
+					if (u->movement_left() == u->total_movement())
+						col = int_to_color(game_config::color_info(preferences::unmoved_color()).rep());
+					else if (u->movement_left() == 0)
+						col = int_to_color(game_config::color_info(preferences::moved_color()).rep());
+					else
+						col = int_to_color(game_config::color_info(preferences::partial_color()).rep());
 
-						if (u->movement_left() == 0) {
-							col = team::get_minimap_color(1);
-						} else {
-							col = team::get_minimap_color(7);
-						}
-					}
-
-				} else {
-					col = team::get_minimap_color(2);
-				}
+				} else
+					col = int_to_color(game_config::color_info(preferences::allied_color()).rep());
 			}
 		}
 
@@ -1882,12 +1940,12 @@ void display::draw_minimap_units()
 		double u_w = 4.0 / 3.0 * xscaling;
 		double u_h = yscaling;
 
-		SDL_Rect r = create_rect(minimap_location_.x + round_double(u_x)
+		SDL_Rect r = sdl::create_rect(minimap_location_.x + round_double(u_x)
 				, minimap_location_.y + round_double(u_y)
 				, round_double(u_w)
 				, round_double(u_h));
 
-		sdl_fill_rect(video().getSurface(), &r, mapped_col);
+		sdl::fill_rect(video().getSurface(), &r, mapped_col);
 	}
 }
 
@@ -1916,7 +1974,7 @@ bool display::scroll(int xmove, int ymove, bool force)
 	SDL_Rect dstrect = map_area();
 	dstrect.x += dx;
 	dstrect.y += dy;
-	dstrect = intersect_rects(dstrect, map_area());
+	dstrect = sdl::intersect_rects(dstrect, map_area());
 
 	SDL_Rect srcrect = dstrect;
 	srcrect.x -= dx;
@@ -2129,7 +2187,7 @@ void display::scroll_to_xy(int screenxpos, int screenypos, SCROLL_TYPE scroll_ty
 void display::scroll_to_tile(const map_location& loc, SCROLL_TYPE scroll_type, bool check_fogged, bool force)
 {
 	if(get_map().on_board(loc) == false) {
-		ERR_DP << "Tile at " << loc << " isn't on the map, can't scroll to the tile.\n";
+		ERR_DP << "Tile at " << loc << " isn't on the map, can't scroll to the tile." << std::endl;
 		return;
 	}
 
@@ -2270,7 +2328,7 @@ void display::scroll_to_tiles(const std::vector<map_location>::const_iterator & 
 			if (target_x < r.x) target_x = r.x;
 			if (target_x > r.x+r.w-1) target_x = r.x+r.w-1;
 		} else {
-			ERR_DP << "Bug in the scrolling code? Looks like we would not need to scroll after all...\n";
+			ERR_DP << "Bug in the scrolling code? Looks like we would not need to scroll after all..." << std::endl;
 			// keep the target at the center
 		}
 	}
@@ -2398,7 +2456,7 @@ void display::draw(bool update,bool force) {
 	if (screen_.update_locked()) {
 		return;
 	}
-
+	set_scontext_leave_for_draw leave_synced_context;
 	local_tod_light_ = has_time_area() && preferences::get("local_tod_lighting", true);
 
 	draw_init();
@@ -2452,7 +2510,7 @@ void display::clear_screen()
 {
 	surface disp(screen_.getSurface());
 	SDL_Rect area = screen_area();
-	sdl_fill_rect(disp, &area, SDL_MapRGB(disp->format, 0, 0, 0));
+	sdl::fill_rect(disp, &area, SDL_MapRGB(disp->format, 0, 0, 0));
 }
 
 const SDL_Rect& display::get_clip_rect()
@@ -2472,8 +2530,8 @@ void display::draw_invalidated() {
 		update_rect(xpos, ypos, zoom_, zoom_);
 
 		const bool on_map = get_map().on_board(loc);
-		SDL_Rect hex_rect = create_rect(xpos, ypos, zoom_, zoom_);
-		if(!rects_overlap(hex_rect,clip_rect)) {
+		SDL_Rect hex_rect = sdl::create_rect(xpos, ypos, zoom_, zoom_);
+		if(!sdl::rects_overlap(hex_rect,clip_rect)) {
 			continue;
 		}
 		draw_hex(loc);
@@ -2486,9 +2544,9 @@ void display::draw_invalidated() {
 	invalidated_hexes_ += invalidated_.size();
 
 	BOOST_FOREACH(const map_location& loc, invalidated_) {
-		unit_map::iterator u_it = units_->find(loc);
+		unit_map::const_iterator u_it = dc_->units().find(loc);
 		exclusive_unit_draw_requests_t::iterator request = exclusive_unit_draw_requests_.find(loc);
-		if (u_it != units_->end()
+		if (u_it != dc_->units().end()
 				&& (request == exclusive_unit_draw_requests_.end() || request->second == u_it->id()))
 			u_it->redraw_unit();
 	}
@@ -2525,10 +2583,10 @@ void display::draw_hex(const map_location& loc) {
 
 	if(!shrouded(loc)) {
 		typedef overlay_map::const_iterator Itor;
-		std::pair<Itor,Itor> overlays = overlays_.equal_range(loc);
+		std::pair<Itor,Itor> overlays = overlays_->equal_range(loc);
 		for( ; overlays.first != overlays.second; ++overlays.first) {
 			if ((overlays.first->second.team_name == "" ||
-					overlays.first->second.team_name.find((*teams_)[playing_team()].team_name()) != std::string::npos)
+					overlays.first->second.team_name.find(dc_->teams()[playing_team()].team_name()) != std::string::npos)
 					&& !(fogged(loc) && !overlays.first->second.visible_in_fog))
 			{
 				drawing_buffer_add(LAYER_TERRAIN_BG, loc, xpos, ypos,
@@ -2586,8 +2644,8 @@ void display::draw_hex(const map_location& loc) {
 			int off_y = ypos + hex_size()/2;
 			surface text = font::get_rendered_text(lexical_cast<std::string>(loc), font::SIZE_SMALL, font::NORMAL_COLOR);
 			surface bg = create_neutral_surface(text->w, text->h);
-			SDL_Rect bg_rect = create_rect(0, 0, text->w, text->h);
-			sdl_fill_rect(bg, &bg_rect, 0xaa000000);
+			SDL_Rect bg_rect = sdl::create_rect(0, 0, text->w, text->h);
+			sdl::fill_rect(bg, &bg_rect, 0xaa000000);
 			off_x -= text->w / 2;
 			if (draw_terrain_codes_) {
 				off_y -= text->h;
@@ -2602,8 +2660,8 @@ void display::draw_hex(const map_location& loc) {
 			int off_y = ypos + hex_size()/2;
 			surface text = font::get_rendered_text(lexical_cast<std::string>(get_map().get_terrain(loc)), font::SIZE_SMALL, font::NORMAL_COLOR);
 			surface bg = create_neutral_surface(text->w, text->h);
-			SDL_Rect bg_rect = create_rect(0, 0, text->w, text->h);
-			sdl_fill_rect(bg, &bg_rect, 0xaa000000);
+			SDL_Rect bg_rect = sdl::create_rect(0, 0, text->w, text->h);
+			sdl::fill_rect(bg, &bg_rect, 0xaa000000);
 			off_x -= text->w / 2;
 			if (!draw_coordinates_) {
 				off_y -= text->h / 2;
@@ -2710,7 +2768,7 @@ void display::refresh_report(std::string const &report_name, const config * new_
 		if (rect.w > 0 && rect.h > 0) {
 			surf.assign(get_surface_portion(screen_.getSurface(), rect));
 			if (reportSurfaces_[report_name] == NULL) {
-				ERR_DP << "Could not backup background for report!\n";
+				ERR_DP << "Could not backup background for report!" << std::endl;
 			}
 		}
 		update_rect(rect);
@@ -2748,7 +2806,7 @@ void display::refresh_report(std::string const &report_name, const config * new_
 	for (config::const_child_itors elements = report.child_range("element");
 	     elements.first != elements.second; ++elements.first)
 	{
-		SDL_Rect area = create_rect(x, y, rect.w + rect.x - x, rect.h + rect.y - y);
+		SDL_Rect area = sdl::create_rect(x, y, rect.w + rect.x - x, rect.h + rect.y - y);
 		if (area.h <= 0) break;
 
 		std::string t = (*elements.first)["text"];
@@ -2759,7 +2817,10 @@ void display::refresh_report(std::string const &report_name, const config * new_
 			// Draw a text element.
 			font::ttext text;
 			if (item->font_rgb_set()) {
-				text.set_foreground_color(item->font_rgb());
+				// font_rgb() has no alpha channel and uses a 0x00RRGGBB
+				// layout instead of 0xRRGGBBAA which is what ttext expects,
+				// so shift the value to the left and add fully-opaque alpha.
+				text.set_foreground_color((item->font_rgb() << 8) + 0xFF);
 			}
 			bool eol = false;
 			if (t[t.size() - 1] == '\n') {
@@ -2814,7 +2875,7 @@ void display::refresh_report(std::string const &report_name, const config * new_
 			surface img(image::get_image(t));
 
 			if (!img) {
-				ERR_DP << "could not find image for report: '" << t << "'\n";
+				ERR_DP << "could not find image for report: '" << t << "'" << std::endl;
 				continue;
 			}
 
@@ -2937,7 +2998,7 @@ bool display::propagate_invalidation(const std::set<map_location>& locs)
 
 bool display::invalidate_visible_locations_in_rect(const SDL_Rect& rect)
 {
-	return invalidate_locations_in_rect(intersect_rects(map_area(),rect));
+	return invalidate_locations_in_rect(sdl::intersect_rects(map_area(),rect));
 }
 
 bool display::invalidate_locations_in_rect(const SDL_Rect& rect)
@@ -2956,16 +3017,16 @@ void display::invalidate_animations_location(const map_location& loc) {
 	if (get_map().is_village(loc)) {
 		const int owner = village_owner(loc);
 		if (owner >= 0 && flags_[owner].need_update()
-		&& (!fogged(loc) || !(*teams_)[currentTeam_].is_enemy(owner+1))) {
+		&& (!fogged(loc) || !dc_->teams()[currentTeam_].is_enemy(owner+1))) {
 			invalidate(loc);
 		}
 	}
 }
 
 
-std::vector<unit*> display::get_unit_list_for_invalidation() {
-	std::vector<unit*> unit_list;
-	BOOST_FOREACH(unit &u, *units_) {
+std::vector<const unit*> display::get_unit_list_for_invalidation() {
+	std::vector<const unit*> unit_list;
+	BOOST_FOREACH(const unit &u, dc_->units()) {
 		unit_list.push_back(&u);
 	}
 	return unit_list;
@@ -2985,8 +3046,8 @@ void display::invalidate_animations()
 			}
 		}
 	}
-	std::vector<unit*> unit_list=get_unit_list_for_invalidation();
-	BOOST_FOREACH(unit* u, unit_list) {
+	std::vector<const unit*> unit_list=get_unit_list_for_invalidation();
+	BOOST_FOREACH(const unit* u, unit_list) {
 		u->refresh();
 	}
 	bool new_inval;
@@ -2996,7 +3057,7 @@ void display::invalidate_animations()
 #pragma omp parallel for reduction(|:new_inval) shared(unit_list) schedule(guided)
 #endif //_OPENMP
 		for(int i=0; i < static_cast<int>(unit_list.size()); i++) {
-			new_inval |=  unit_list[i]->invalidate(unit_list[i]->get_location());
+			new_inval |=  unit_list[i]->invalidate(*this);
 		}
 	}while(new_inval);
 }
@@ -3038,7 +3099,7 @@ void display::write(config& cfg) const
 	cfg["view_locked"] = view_locked_;
 	cfg["color_adjust_red"] = color_adjust_.r;
 	cfg["color_adjust_green"] = color_adjust_.g;
-	cfg["color_adjust_blue_"] = color_adjust_.b;
+	cfg["color_adjust_blue"] = color_adjust_.b;
 }
 
 void display::read(const config& cfg)
@@ -3046,7 +3107,48 @@ void display::read(const config& cfg)
 	view_locked_ = cfg["view_locked"].to_bool(false);
 	color_adjust_.r = cfg["color_adjust_red"].to_int(0);
 	color_adjust_.g = cfg["color_adjust_green"].to_int(0);
-	color_adjust_.b = cfg["color_adjust_blue_"].to_int(0);
+	color_adjust_.b = cfg["color_adjust_blue"].to_int(0);
+}
+
+void display::process_reachmap_changes()
+{
+	if (!reach_map_changed_) return;
+	if (reach_map_.empty() != reach_map_old_.empty()) {
+		// Invalidate everything except the non-darkened tiles
+		reach_map &full = reach_map_.empty() ? reach_map_old_ : reach_map_;
+
+		rect_of_hexes hexes = get_visible_hexes();
+		rect_of_hexes::iterator i = hexes.begin(), end = hexes.end();
+		for (;i != end; ++i) {
+			reach_map::iterator reach = full.find(*i);
+			if (reach == full.end()) {
+				// Location needs to be darkened or brightened
+				invalidate(*i);
+			} else if (reach->second != 1) {
+				// Number needs to be displayed or cleared
+				invalidate(*i);
+			}
+		}
+	} else if (!reach_map_.empty()) {
+		// Invalidate only changes
+		reach_map::iterator reach, reach_old;
+		for (reach = reach_map_.begin(); reach != reach_map_.end(); ++reach) {
+			reach_old = reach_map_old_.find(reach->first);
+			if (reach_old == reach_map_old_.end()) {
+				invalidate(reach->first);
+			} else {
+				if (reach_old->second != reach->second) {
+					invalidate(reach->first);
+				}
+				reach_map_old_.erase(reach_old);
+			}
+		}
+		for (reach_old = reach_map_old_.begin(); reach_old != reach_map_old_.end(); ++reach_old) {
+			invalidate(reach_old->first);
+		}
+	}
+	reach_map_old_ = reach_map_;
+	reach_map_changed_ = false;
 }
 
 display *display::singleton_ = NULL;

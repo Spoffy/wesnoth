@@ -14,19 +14,18 @@ The release team should empty this file after each release.
 CHANGES
 =======
 
-[section="Another Change"]
+[section="Example section header"]
+Example contents.
 [/section]
 
-[section="Another Change"]
-[/section]
-
-[section="Another Change"]
+[section="Updated OS X user data directory"]
+The OS X user data directory is now ~/Library/Application Support/Wesnoth_1.13, in preparation for the upcoming development release, Wesnoth 1.13.0. This means that preferences and add-ons need to be either reset/reloaded or be copied/linked from ~/Library/Application Support/Wesnoth_1.11.
 [/section]
 
 ==========
 KNOWN BUGS
 ==========
 
-[list][*] Text for entry1.
+[list][*] The mp server has trouble with "Local" player types in campaigns. We have decided to postpone dealing with this. In the meantime, you might try assigning such sides to the host, or running multiple instances of wesnoth. https://gna.org/bugs/?21965
 [*] Text for entry2.
 [/list]

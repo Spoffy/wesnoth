@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -14,12 +14,15 @@
 #ifndef GAME_PREFERENCES_HPP_INCLUDED
 #define GAME_PREFERENCES_HPP_INCLUDED
 
+class game_board;
 class gamemap;
-class game_state;
 class team;
 class unit_map;
 
 #include "preferences.hpp"
+#include "game_config.hpp"
+
+#include "serialization/compression.hpp"
 
 #include <set>
 #include <vector>
@@ -149,6 +152,9 @@ class acquaintance;
 	bool skip_mp_replay();
 	void set_skip_mp_replay(bool value);
 
+	bool blindfold_replay();
+	void set_blindfold_replay(bool value);
+
 	bool countdown();
 	void set_countdown(bool value);
 	int countdown_init_time();
@@ -169,11 +175,13 @@ class acquaintance;
 	int xp_modifier();
 	void set_xp_modifier(int value);
 
-	int era();
-	void set_era(int value);
+	std::string era();
+	void set_era(const std::string& value);
 
-	int map();
-	void set_map(int value);
+	std::string level();
+	void set_level(const std::string& value);
+	int level_type();
+	void set_level_type(int value);
 
 	const std::vector<std::string>& modifications();
 	void set_modifications(const std::vector<std::string>& value);
@@ -228,7 +236,7 @@ class acquaintance;
 	bool show_all_units_in_help();
 	void set_show_all_units_in_help(bool value);
 
-	bool compress_saves();
+	compression::format save_compression_format();
 
 	bool startup_effect();
 
@@ -239,8 +247,6 @@ class acquaintance;
 	void set_custom_command(const std::string& command);
 
 	std::vector<std::string>* get_history(const std::string& id);
-
-	std::string client_type();
 
 	void set_theme(const std::string& theme);
 	std::string theme();
@@ -254,15 +260,18 @@ class acquaintance;
 
 	// Add all recruitable units as encountered so that information
 	// about them are displayed to the user in the help system.
-	void encounter_recruitable_units(std::vector<team>& teams);
+	void encounter_recruitable_units(const std::vector<team>& teams);
 	// Add all units that exist at the start to the encountered units so
 	// that information about them are displayed to the user in the help
 	// system.
-	void encounter_start_units(unit_map& units);
+	void encounter_start_units(const unit_map& units);
 	// Add all units that are recallable as encountered units.
 	void encounter_recallable_units(std::vector<team>& teams);
 	// Add all terrains on the map as encountered terrains.
-	void encounter_map_terrain(gamemap& map);
+	void encounter_map_terrain(const gamemap& map);
+
+	// Calls all of the above functions on the current game board
+	void encounter_all_content(const game_board & gb);
 
 class acquaintance {
 public:
@@ -289,9 +298,9 @@ public:
 
 	void load_from_config(const config& cfg);
 
-	const std::string& get_nick() const { return nick_; };
-	const std::string& get_status() const { return status_; };
-	const std::string& get_notes() const { return notes_; };
+	const std::string& get_nick() const { return nick_; }
+	const std::string& get_status() const { return status_; }
+	const std::string& get_notes() const { return notes_; }
 
 	void save(config& cfg);
 

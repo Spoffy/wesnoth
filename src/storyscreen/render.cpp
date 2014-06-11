@@ -1,6 +1,6 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
-   Copyright (C) 2009 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
+   Copyright (C) 2009 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -67,7 +67,7 @@ namespace {
 
 	void blur_area(CVideo& video, int y, int h)
 	{
-		SDL_Rect blur_rect = create_rect(0, y, screen_area().w, h);
+		SDL_Rect blur_rect = sdl::create_rect(0, y, screen_area().w, h);
 		surface blur = get_surface_portion(video.getSurface(), blur_rect);
 		blur = blur_surface(blur, 1, false);
 		video.blit_surface(0, y, blur);
@@ -110,11 +110,11 @@ void part_ui::prepare_background()
 	base_rect_.h = video_.gety();
 	has_background_ = false;
 	bool no_base_yet = true;
-	
+
 	// Build background surface
 	BOOST_FOREACH(const background_layer& bl, p_.get_background_layers()) {
 		surface layer;
-		
+
 		if(bl.file().empty() != true) {
 			layer.assign( image::get_image(bl.file()) );
 		}
@@ -122,9 +122,9 @@ void part_ui::prepare_background()
 		if(layer.null() || layer->w * layer->h == 0) {
 			continue;
 		}
-		
+
 		layer = make_neutral_surface(layer);
-		
+
 		const double xscale = 1.0 * video_.getx() / layer->w;
 		const double yscale = 1.0 * video_.gety() / layer->h;
 		const bool scalev = bl.scale_vertically();
@@ -149,12 +149,12 @@ void part_ui::prepare_background()
 
 		layer = tile_surface(layer, tilew, tileh, false);
 
-		SDL_Rect drect = create_rect(
+		SDL_Rect drect = sdl::create_rect(
 				  (background_->w - layer->w) / 2
 				, (background_->h - layer->h) / 2
 				, layer->w
 				, layer->h);
-		SDL_Rect srect = create_rect(
+		SDL_Rect srect = sdl::create_rect(
 				  0
 				, 0
 				, layer->w
@@ -231,7 +231,7 @@ void part_ui::prepare_floating_images()
 
 void part_ui::render_background()
 {
-	draw_solid_tinted_rectangle(
+	sdl::draw_solid_tinted_rectangle(
 		0, 0, video_.getx(), video_.gety(), 0, 0, 0, 1.0,
 		video_.getSurface()
 	);
@@ -303,7 +303,7 @@ void part_ui::render_title_box()
 	surface txtsurf = t.render();
 
 	if(txtsurf.null()) {
-		ERR_NG << "storyscreen titlebox rendering resulted in a null surface\n";
+		ERR_NG << "storyscreen titlebox rendering resulted in a null surface" << std::endl;
 		return;
 	}
 
@@ -321,7 +321,7 @@ void part_ui::render_title_box()
 		break; // already set before
 	}
 
-	draw_solid_tinted_rectangle(
+	sdl::draw_solid_tinted_rectangle(
 		base_rect_.x + titlebox_x - titleshadow_padding,
 		base_rect_.y + titlebox_y - titleshadow_padding,
 		titlebox_w + 2*titleshadow_padding,
@@ -369,7 +369,7 @@ void part_ui::render_story_box_borders(SDL_Rect& update_area)
 
 		if(border_top.null() != true) {
 			if((border_top = scale_surface(border_top, screen_area().w, border_top->h)).null()) {
-				WARN_NG << "storyscreen got a null top border surface after rescaling\n";
+				WARN_NG << "storyscreen got a null top border surface after rescaling" << std::endl;
 			}
 			else {
 				update_area.y -= border_top->h;
@@ -381,7 +381,7 @@ void part_ui::render_story_box_borders(SDL_Rect& update_area)
 
 		if(border_bottom.null() != true) {
 			if((border_bottom = scale_surface(border_bottom, screen_area().w, border_bottom->h)).null()) {
-				WARN_NG << "storyscreen got a null bottom border surface after rescaling\n";
+				WARN_NG << "storyscreen got a null bottom border surface after rescaling" << std::endl;
 			}
 			else {
 				blur_area(video_, update_area.h, border_bottom->h);
@@ -425,7 +425,7 @@ void part_ui::render_story_box()
 	surface txtsurf = t.render();
 
 	if(txtsurf.null()) {
-		ERR_NG << "storyscreen text area rendering resulted in a null surface\n";
+		ERR_NG << "storyscreen text area rendering resulted in a null surface" << std::endl;
 		return;
 	}
 
@@ -449,7 +449,7 @@ void part_ui::render_story_box()
 		break;
 	}
 
-	SDL_Rect update_area = create_rect(0
+	SDL_Rect update_area = sdl::create_rect(0
 			, fix_text_y
 			, screen_area().w
 			, fix_text_h);
@@ -467,7 +467,7 @@ void part_ui::render_story_box()
 		blur_area(video_, fix_text_y, fix_text_h);
 #endif
 
-		draw_solid_tinted_rectangle(
+		sdl::draw_solid_tinted_rectangle(
 			0, fix_text_y, screen_area().w, fix_text_h,
 			storyshadow_r, storyshadow_g, storyshadow_b,
 			storyshadow_opacity,
@@ -489,8 +489,8 @@ void part_ui::render_story_box()
 
 	// Time to do some fucking visual effect.
 	const int scan_height = 1, scan_width = txtsurf->w;
-	SDL_Rect scan = create_rect(0, 0, scan_width, scan_height);
-	SDL_Rect dstrect = create_rect(text_x_, 0, scan_width, scan_height);
+	SDL_Rect scan = sdl::create_rect(0, 0, scan_width, scan_height);
+	SDL_Rect dstrect = sdl::create_rect(text_x_, 0, scan_width, scan_height);
 	surface scan_dst = video_.getSurface();
 	bool scan_finished = false;
 	while(true) {
@@ -516,7 +516,7 @@ void part_ui::render_story_box()
 		}
 	}
 
-	draw_solid_tinted_rectangle(
+	sdl::draw_solid_tinted_rectangle(
 		0, 0, video_.getx(), video_.gety(), 0, 0, 0,
 		1.0, video_.getSurface()
 	);
@@ -600,8 +600,8 @@ part_ui::RESULT part_ui::show()
 	try {
 		render_story_box();
 	}
-	catch(utils::invalid_utf8_exception const&) {
-		ERR_NG << "invalid UTF-8 sequence in story text, skipping part...\n";
+	catch(utf8::invalid_utf8_exception const&) {
+		ERR_NG << "invalid UTF-8 sequence in story text, skipping part..." << std::endl;
 	}
 
 	return ret_;

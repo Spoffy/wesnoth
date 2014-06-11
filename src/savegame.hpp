@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by Jörg Hinrichs, refactored from various
+   Copyright (C) 2003 - 2014 by Jörg Hinrichs, refactored from various
    places formerly created by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -18,9 +18,9 @@
 
 #include "filesystem.hpp"
 #include "gamestatus.hpp"
-#include "tod_manager.hpp"
+#include "saved_game.hpp"
 #include "show_dialog.hpp"
-
+#include "serialization/compression.hpp"
 class config_writer;
 class game_display;
 
@@ -29,57 +29,17 @@ struct illegal_filename_exception {};
 
 namespace savegame {
 
-/** Filename and modification date for a file list */
-class save_info {
-private:
-	friend class create_save_info;
-private:
-	save_info(const std::string& name, const time_t& modified) :
-		name_(name), modified_(modified)
-	{}
-
-public:
-	const std::string& name()     const  { return name_; }
-	const time_t&      modified() const  { return modified_; }
-public:
-	std::string format_time_summary() const;
-	std::string format_time_local() const;
-	const config& summary() const;
-private:
-	std::string name_;
-	time_t modified_;
-};
-
-/**
- * A structure for comparing to save_info objects based on their modified time.
- * If the times are equal, will order based on the name.
- */
-struct save_info_less_time {
-	bool operator()(const save_info& a, const save_info& b) const;
-};
-
-std::vector<save_info> get_saves_list(const std::string* dir = NULL, const std::string* filter = NULL);
-
-/** Read the complete config information out of a savefile. */
-void read_save_file(const std::string& name, config& cfg, std::string* error_log);
-
 /** Returns true if there is already a savegame with that name. */
-bool save_game_exists(const std::string& name, bool compress_saves);
+bool save_game_exists(const std::string& name, compression::format compressed);
 
 /** Delete all autosaves of a certain scenario. */
 void clean_saves(const std::string& label);
-
-/** Remove autosaves that are no longer needed (according to the autosave policy in the preferences). */
-void remove_old_auto_saves(const int autosavemax, const int infinite_auto_saves);
-
-/** Delete a savegame. */
-void delete_game(const std::string& name);
 
 /** The class for loading a savefile. */
 class loadgame
 {
 public:
-	loadgame(display& gui, const config& game_config, game_state& gamestate);
+	loadgame(display& gui, const config& game_config, saved_game& gamestate);
 	virtual ~loadgame() {}
 
 	/** Load a game without providing any information. */
@@ -102,13 +62,6 @@ public:
 	bool show_replay() const { return show_replay_; }
 	bool cancel_orders() const { return cancel_orders_; }
 	const std::string & filename() const { return filename_; }
-
-	std::string get_difficulty() const
-	{ if ( const config & carryover = load_config_.child("carryover_sides_start") )
-		return carryover["difficulty"];
-	  else
-		return DEFAULT_DIFFICULTY; }
-
 private:
 	/** Display the load-game dialog. */
 	void show_dialog(bool show_replay, bool cancel_orders);
@@ -122,7 +75,7 @@ private:
 	const config& game_config_;
 	display& gui_;
 
-	game_state& gamestate_; /** Primary output information. */
+	saved_game& gamestate_; /** Primary output information. */
 	std::string filename_; /** Name of the savefile to be loaded. */
 	std::string difficulty_; /** The difficulty the save is meant to be loaded with. */
 	config load_config_; /** Config information of the savefile to be loaded. */
@@ -141,7 +94,7 @@ class savegame
 protected:
 	/** The only constructor of savegame. The title parameter is only necessary if you
 		intend to do interactive saves. */
-	savegame(game_state& gamestate, const bool compress_saves, const std::string& title = "Save");
+	savegame(saved_game& gamestate, const compression::format compress_saves, const std::string& title = "Save");
 
 public:
 	virtual ~savegame() {}
@@ -178,11 +131,11 @@ protected:
 	void set_error_message(const std::string& error_message) { error_message_ = error_message; }
 
 	const std::string& title() { return title_; }
-	game_state& gamestate() { return gamestate_; }
+	saved_game& gamestate() { return gamestate_; }
 	config& snapshot() { return snapshot_; }
 
 	/** If there needs to be some data fiddling before saving the game, this is the place to go. */
-	virtual void before_save();
+	void before_save();
 
 	/** Writing the savegame config to a file. */
 	virtual void write_game(config_writer &out);
@@ -209,7 +162,7 @@ private:
 	scoped_ostream open_save_game(const std::string &label);
 	friend class save_info;
 
-	game_state& gamestate_;
+	saved_game& gamestate_;
 
 	/** Gamestate information at the time of saving. Note that this object is needed here, since
 		even if it is empty the code relies on it to be there. */
@@ -223,7 +176,7 @@ private:
 
 	bool show_confirmation_; /** Determines if a confirmation of successful saving the game is shown. */
 
-	bool compress_saves_; /** Determines, if compression is used for the savegame file */
+	compression::format compress_saves_; /** Determines, what compression format is used for the savegame file */
 };
 
 /** Class for "normal" midgame saves. The additional members are needed for creating the snapshot
@@ -231,15 +184,13 @@ private:
 class ingame_savegame : public savegame
 {
 public:
-	ingame_savegame(game_state& gamestate,
-		game_display& gui, const config& snapshot_cfg, const bool compress_saves);
+	ingame_savegame(saved_game& gamestate,
+		game_display& gui, const config& snapshot_cfg, const compression::format compress_saves);
 
 private:
 	/** Create a filename for automatic saves */
 	virtual void create_filename();
 
-	/** Builds the snapshot config. */
-	virtual void before_save();
 
 	void write_game(config_writer &out);
 
@@ -251,7 +202,7 @@ protected:
 class replay_savegame : public savegame
 {
 public:
-	replay_savegame(game_state& gamestate, const bool compress_saves);
+	replay_savegame(saved_game& gamestate, const compression::format compress_saves);
 
 private:
 	/** Create a filename for automatic saves */
@@ -264,8 +215,8 @@ private:
 class autosave_savegame : public ingame_savegame
 {
 public:
-	autosave_savegame(game_state &gamestate,
-					 game_display& gui, const config& snapshot_cfg, const bool compress_saves);
+	autosave_savegame(saved_game &gamestate,
+					 game_display& gui, const config& snapshot_cfg, const compression::format compress_saves);
 
 	void autosave(const bool disable_autosave, const int autosave_max, const int infinite_autosaves);
 private:
@@ -276,7 +227,7 @@ private:
 class oos_savegame : public ingame_savegame
 {
 public:
-	oos_savegame(const config& snapshot_cfg);
+	oos_savegame(saved_game& gamestate, game_display& gui, const config& snapshot_cfg);
 
 private:
 	/** Display the save game dialog. */
@@ -287,15 +238,12 @@ private:
 class scenariostart_savegame : public savegame
 {
 public:
-	scenariostart_savegame(game_state& gamestate, const bool compress_saves);
+	scenariostart_savegame(saved_game& gamestate, const compression::format compress_saves);
 
 private:
 	void write_game(config_writer &out);
 };
 
 } //end of namespace savegame
-
-void replace_underbar2space(std::string &name);
-void replace_space2underbar(std::string &name);
 
 #endif

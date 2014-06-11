@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2008 - 2013 by Fabian Mueller <fabianmueller5@gmx.de>
+   Copyright (C) 2008 - 2014 by Fabian Mueller <fabianmueller5@gmx.de>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -109,7 +109,7 @@ void mouse_action_map_label::set_mouse_overlay(editor_display& disp)
 	//TODO avoid hardcoded hex field size
 	surface image = create_neutral_surface(72,72);
 
-	SDL_Rect r = create_rect(6, 6, 0, 0);
+	SDL_Rect r = sdl::create_rect(6, 6, 0, 0);
 	blit_surface(image60, NULL, image, &r);
 
 	Uint8 alpha = 196;

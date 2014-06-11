@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -105,7 +105,7 @@ effect::effect(int xpos, int ypos, const animated<image::locator>::anim_descript
 	y_(ypos),
 	surf_(NULL),
 	buffer_(NULL),
-	rect_(empty_rect),
+	rect_(sdl::empty_rect),
 	loc_(loc),
 	overlayed_hexes_()
 {
@@ -119,9 +119,8 @@ effect::effect(int xpos, int ypos, const animated<image::locator>::anim_descript
 
 void effect::set_location(int x, int y)
 {
-	const map_location zero_loc(0,0);
-	int new_x = x - disp->get_location_x(zero_loc);
-	int new_y = y - disp->get_location_y(zero_loc);
+	int new_x = x - disp->get_location_x(map_location::ZERO());
+	int new_y = y - disp->get_location_y(map_location::ZERO());
 	if (new_x != x_ || new_y != y_) {
 		x_ = new_x;
 		y_ = new_y;
@@ -165,14 +164,13 @@ bool effect::render()
 		surf_.assign(flop_surface(surf_));
 	}
 
-	const map_location zero_loc(0,0);
-	const int screenx = disp->get_location_x(zero_loc);
-	const int screeny = disp->get_location_y(zero_loc);
+	const int screenx = disp->get_location_x(map_location::ZERO());
+	const int screeny = disp->get_location_y(map_location::ZERO());
 
 	const int xpos = x_ + screenx - surf_->w/2;
 	const int ypos = y_ + screeny - surf_->h/2;
 
-	SDL_Rect rect = create_rect(xpos, ypos, surf_->w, surf_->h);
+	SDL_Rect rect = sdl::create_rect(xpos, ypos, surf_->w, surf_->h);
 	rect_ = rect;
 	SDL_Rect clip_rect = disp->map_outside_area();
 
@@ -186,7 +184,7 @@ bool effect::render()
 		}
 	}
 
-	if(rects_overlap(rect,clip_rect) == false) {
+	if(sdl::rects_overlap(rect,clip_rect) == false) {
 		buffer_.assign(NULL);
 		return false;
 	}
@@ -215,6 +213,15 @@ void effect::unrender()
 		return;
 	}
 
+	// Shrouded haloes are never rendered unless shroud has been re-placed; in
+	// that case, unrendering causes the hidden terrain (and previous halo
+	// frame, when dealing with animated halos) to glitch through shroud. We
+	// don't need to unrender them because shroud paints over the underlying
+	// area anyway.
+	if (loc_.x != -1 && loc_.y != -1 && disp->shrouded(loc_)) {
+		return;
+	}
+
 	surface screen = disp->get_screen_surface();
 
 	SDL_Rect clip_rect = disp->map_outside_area();
@@ -222,14 +229,13 @@ void effect::unrender()
 
 	// Due to scrolling, the location of the rendered halo
 	// might have changed; recalculate
-	const map_location zero_loc(0,0);
-	const int screenx = disp->get_location_x(zero_loc);
-	const int screeny = disp->get_location_y(zero_loc);
+	const int screenx = disp->get_location_x(map_location::ZERO());
+	const int screeny = disp->get_location_y(map_location::ZERO());
 
 	const int xpos = x_ + screenx - surf_->w/2;
 	const int ypos = y_ + screeny - surf_->h/2;
 
-	SDL_Rect rect = create_rect(xpos, ypos, surf_->w, surf_->h);
+	SDL_Rect rect = sdl::create_rect(xpos, ypos, surf_->w, surf_->h);
 	sdl_blit(buffer_,NULL,screen,&rect);
 	update_rect(rect);
 }

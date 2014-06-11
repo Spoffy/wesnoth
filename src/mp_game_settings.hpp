@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by Jörg Hinrichs
+   Copyright (C) 2003 - 2014 by Jörg Hinrichs
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -38,8 +38,13 @@ struct mp_game_settings : public savegame::savegame_config
 	std::string hash;
 	std::string mp_era;
 	std::string mp_scenario;
+	std::string mp_scenario_name;
+	std::string mp_campaign;
+	std::string difficulty_define;
 	std::vector<std::string> active_mods;
+	std::map<std::string, std::string> side_users;
 
+	int num_turns;
 	int village_gold;
 	int village_support;
 	int xp_modifier;

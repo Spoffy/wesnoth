@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -37,9 +37,9 @@ class unit_map;
 class game_display : public display
 {
 public:
-	game_display(unit_map& units, CVideo& video,
-			const gamemap& map, const tod_manager& tod_manager,
-			const std::vector<team>& t, const config& theme_cfg,
+	game_display(game_board& board, CVideo& video,
+			const tod_manager& tod_manager,
+			const config& theme_cfg,
 			const config& level);
 
 	static game_display* create_dummy_display(CVideo& video);
@@ -62,7 +62,7 @@ public:
 	 *
 	 * This will normally be the playing team.
 	 */
-	void scroll_to_leader(unit_map& units, int side, SCROLL_TYPE scroll_type = ONSCREEN,bool force = true);
+	void scroll_to_leader(int side, SCROLL_TYPE scroll_type = ONSCREEN,bool force = true);
 
 	/**
 	 * Function to display a location as selected.
@@ -154,7 +154,7 @@ protected:
 	/**
 	 * the list of units we need to look at, game_display adds fake units
 	 */
-	virtual std::vector<unit*> get_unit_list_for_invalidation();
+	virtual std::vector<const unit*> get_unit_list_for_invalidation();
 
 
 public:
@@ -221,13 +221,6 @@ public:
 		return map_location::write_direction(
 			attack_indicator_src_.get_relative_dir(attack_indicator_dst_));
 	}
-
-
-	/**
-	 * Check the overlay_map for proper team-specific overlays to be
-	 * displayed/hidden
-	 */
-	void parse_team_overlays();
 
 	// Functions used in the editor:
 
@@ -297,6 +290,8 @@ private:
 
 	void draw_sidebar();
 
+	overlay_map overlay_map_;
+
 	/// collection of units destined to be drawn but not put into the unit map
 	std::deque<unit*> fake_units_;
 
@@ -315,23 +310,6 @@ private:
 	void invalidate_route();
 
 	map_location displayedUnitHex_;
-
-//	struct overlay {
-//		overlay(const std::string& img, const std::string& halo_img,
-//		        int handle, const std::string& overlay_team_name, const bool fogged) : image(img), halo(halo_img),
-//				team_name(overlay_team_name), halo_handle(handle) , visible_in_fog(fogged){}
-//		std::string image;
-//		std::string halo;
-//		std::string team_name;
-//		int halo_handle;
-//		bool visible_in_fog;
-//	};
-
-//	typedef std::multimap<map_location,overlay> overlay_map;
-
-//	overlay_map overlays_;
-
-
 
 	double sidebarScaling_;
 
@@ -353,12 +331,7 @@ private:
 
 	std::vector<chat_message> chat_messages_;
 
-	// Tiles lit for showing where unit(s) can reach
-	typedef std::map<map_location,unsigned int> reach_map;
-	reach_map reach_map_;
-	reach_map reach_map_old_;
-	bool reach_map_changed_;
-	void process_reachmap_changes();
+
 
 	tgame_mode game_mode_;
 

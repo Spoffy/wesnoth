@@ -1,6 +1,6 @@
 /*
    Copyright (C) 2004 by Philippe Plantier <ayin@anathas.org>
-   Copyright (C) 2005 - 2013 by Guillaume Melquiond <guillaume.melquiond@gmail.com>
+   Copyright (C) 2005 - 2014 by Guillaume Melquiond <guillaume.melquiond@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -39,7 +39,6 @@ namespace {
 	const char UNTRANSLATABLE_PART = 0x02;
 	const char TEXTDOMAIN_SEPARATOR = 0x03;
 	const char ID_TRANSLATABLE_PART = 0x04;
-	const char UNTRANSLATABLE_STRING = 0x05;
 
 	std::vector<std::string> id_to_textdomain;
 	std::map<std::string, unsigned int> textdomain_to_id;
@@ -81,7 +80,7 @@ void t_string_base::walker::update()
 			string_.find(TEXTDOMAIN_SEPARATOR, begin_ + 1);
 
 		if(textdomain_end == std::string::npos || textdomain_end >= string_.size() - 1) {
-			ERR_CF << "Error: invalid string: " << string_ << "\n";
+			ERR_CF << "Error: invalid string: " << string_ << std::endl;
 			begin_ = string_.size();
 			return;
 		}
@@ -98,7 +97,7 @@ void t_string_base::walker::update()
 	}
 	case ID_TRANSLATABLE_PART:
 		if(begin_ + 3 >= string_.size()) {
-			ERR_CF << "Error: invalid string: " << string_ << "\n";
+			ERR_CF << "Error: invalid string: " << string_ << std::endl;
 			begin_ = string_.size();
 			return;
 		}
@@ -108,7 +107,7 @@ void t_string_base::walker::update()
 
 		id = string_[begin_ + 1] + string_[begin_ + 2] * 256;
 		if(id >= id_to_textdomain.size()) {
-			ERR_CF << "Error: invalid string: " << string_ << "\n";
+			ERR_CF << "Error: invalid string: " << string_ << std::endl;
 			begin_ = string_.size();
 			return;
 		}
@@ -124,7 +123,7 @@ void t_string_base::walker::update()
 			end_ = string_.size();
 
 		if(end_ <= begin_ + 1) {
-			ERR_CF << "Error: invalid string: " << string_ << "\n";
+			ERR_CF << "Error: invalid string: " << string_ << std::endl;
 			begin_ = string_.size();
 			return;
 		}

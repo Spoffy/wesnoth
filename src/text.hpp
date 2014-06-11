@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2008 - 2013 by Mark de Wever <koraq@xs4all.nl>
+   Copyright (C) 2008 - 2014 by Mark de Wever <koraq@xs4all.nl>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -15,7 +15,8 @@
 #ifndef TEXT_HPP_INCLUDED
 #define TEXT_HPP_INCLUDED
 
-#include "sdl_utils.hpp"
+#include "sdl/utils.hpp"
+#include "serialization/unicode.hpp"
 
 #include <boost/noncopyable.hpp>
 
@@ -36,7 +37,8 @@ namespace font {
  * Escapes the markup characters in a text.
  *
  * The markups escaped are the ones used in the pango markup. The special
- * characters are @code <>'"&@endcode. They escaping is the same as for HTML.
+ * characters are: @verbatim <>'"& @endverbatim
+ * The escaping is the same as for HTML.
  *
  * @param text                    The text to escape.
  *
@@ -83,10 +85,10 @@ public:
 	bool is_truncated() const;
 
 	/**
-	 * Inserts utf 8 text.
+	 * Inserts UTF-8 text.
 	 *
 	 * @param offset              The position to insert the text.
-	 * @param text                The utf-8 text to insert.
+	 * @param text                The UTF-8 text to insert.
 	 *
 	 * @returns                   The number of characters inserted.
 	 */
@@ -100,7 +102,7 @@ public:
 	 *
 	 * @returns                   True upon success, false otherwise.
 	 */
-	bool insert_unicode(const unsigned offset, const wchar_t unicode);
+	bool insert_unicode(const unsigned offset, ucs4::char_t unicode);
 
 	/**
 	 * Inserts unicode text.
@@ -111,7 +113,7 @@ public:
 	 * @returns                   The number of characters inserted.
 	 */
 	unsigned insert_unicode(
-		const unsigned offset, const std::vector<wchar_t>& unicode);
+		const unsigned offset, const ucs4::string& unicode);
 
 	/***** ***** ***** ***** Font flags ***** ***** ***** *****/
 
@@ -155,7 +157,7 @@ public:
 	/**
 	 * Gets the length of the text in characters.
 	 *
-	 * The text set is utf-8 so the length of the string might not be the length
+	 * The text set is UTF-8 so the length of the string might not be the length
 	 * of the text.
 	 */
 	size_t get_length() const { return length_; }
@@ -206,7 +208,7 @@ private:
 	/** The surface to render upon used as a cache. */
 	mutable surface surface_;
 
-	/** The text to draw (stored as utf-8). */
+	/** The text to draw (stored as UTF-8). */
 	std::string text_;
 
 	/** Is the text markedup if so the markedup render routines need to be used. */
@@ -227,7 +229,7 @@ private:
 	 * Values less or equal to 0 mean no maximum and are internally stored as
 	 * -1, since that's the value pango uses for it.
 	 *
-	 * @see @ref characters_per_line_.
+	 * See @ref characters_per_line_.
 	 */
 	int maximum_width_;
 

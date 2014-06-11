@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by Fabian Mueller <fabianmueller5@gmx.de>
+   Copyright (C) 2003 - 2014 by Fabian Mueller <fabianmueller5@gmx.de>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -27,7 +27,7 @@ struct overlay
 	overlay(const config& cfg) :
 		image(cfg["image"]), halo(cfg["halo"]), team_name(cfg["team_name"]),
 		name(cfg["name"].t_str()), id(cfg["id"]),
-		halo_handle(-1), visible_in_fog(cfg["visible_in_fog"].to_int())
+		halo_handle(-1), visible_in_fog(cfg["visible_in_fog"].to_bool())
 	{
 	}
 

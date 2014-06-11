@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2012 - 2013 by Mark de Wever <koraq@xs4all.nl>
+   Copyright (C) 2012 - 2014 by Mark de Wever <koraq@xs4all.nl>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -34,7 +34,7 @@
  *
  * FLOATING_POINT_EMULATION_USE_SCALED_INT
  * When this macro is defined the @ref tfloat is defined as the 32-bit scaled
- * integer. If not the @tfloat is defined as a @c double, whether or not the
+ * integer. If not the @ref tfloat is defined as a @c double, whether or not the
  * value is shifted depends on @c FLOATING_POINT_EMULATION_ENABLE_RANGE_CHECK.
  *
  * FLOATING_POINT_EMULATION_ENABLE_RANGE_CHECK
@@ -434,7 +434,7 @@ tidiv<T, 8>::idiv(tfloat<T, 8>& lhs, tfloat<T, 8> rhs)
 	 * value is also quite likely to happen, so the case is optimized.
 	 */
 
-	Uint32 lhs_value = abs(lhs.value_);
+	Uint32 lhs_value = std::abs(lhs.value_);
 	if(LIKELY(lhs_value <= 0x007FFFFFu)) {
 		FLOATING_POINT_EMULATION_TRACER_COUNT("lhs_value <= 0x007FFFFFu");
 		sal(lhs.value_, 8);
@@ -508,7 +508,7 @@ tidiv<T, 8>::idiv(tfloat<T, 8>& lhs, tfloat<T, 8> rhs)
 		 * number of positions.
 		 */
 
-		Uint32 rhs_value = abs(rhs.value_);
+		Uint32 rhs_value = std::abs(rhs.value_);
 
 		/*
 		 * Will contain the offset from bit 0 of the LSB set. Since we're only

@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2010 - 2013 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
+ Copyright (C) 2010 - 2014 by Gabriel Morin <gabrielmorin (at) gmail (dot) com>
  Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
  This program is free software; you can redistribute it and/or modify
@@ -64,7 +64,7 @@ side_actions_ptr current_side_actions()
 unit const* find_backup_leader(unit const& leader)
 {
 	assert(leader.can_recruit());
-	assert(resources::game_map->is_keep(leader.get_location()));
+	assert(resources::gameboard->map().is_keep(leader.get_location()));
 	BOOST_FOREACH(unit const& unit, *resources::units)
 	{
 		if (unit.can_recruit() && unit.id() != leader.id())
@@ -78,7 +78,7 @@ unit const* find_backup_leader(unit const& leader)
 
 unit* find_recruiter(size_t team_index, map_location const& hex)
 {
-	if ( !resources::game_map->is_castle(hex) )
+	if ( !resources::gameboard->map().is_castle(hex) )
 		return NULL;
 
 	BOOST_FOREACH(unit& u, *resources::units)
@@ -94,11 +94,11 @@ unit* future_visible_unit(map_location hex, int viewer_side)
 	future_map planned_unit_map;
 	if(!resources::whiteboard->has_planned_unit_map())
 	{
-		ERR_WB << "future_visible_unit cannot find unit, future unit map failed to build.\n";
+		ERR_WB << "future_visible_unit cannot find unit, future unit map failed to build." << std::endl;
 		return NULL;
 	}
 	//use global method get_visible_unit
-	return get_visible_unit(hex, resources::teams->at(viewer_side - 1), false);
+	return resources::gameboard->get_visible_unit(hex, resources::teams->at(viewer_side - 1), false);
 }
 
 unit* future_visible_unit(int on_side, map_location hex, int viewer_side)
@@ -117,12 +117,12 @@ int path_cost(std::vector<map_location> const& path, unit const& u)
 
 	team const& u_team = resources::teams->at(u.side()-1);
 	map_location const& dest = path.back();
-	if ( (resources::game_map->is_village(dest) && !u_team.owns_village(dest))
+	if ( (resources::gameboard->map().is_village(dest) && !u_team.owns_village(dest))
 	     || pathfind::enemy_zoc(u_team, dest, u_team) )
 		return u.total_movement();
 
 	int result = 0;
-	gamemap const& map = *resources::game_map;
+	gamemap const& map = resources::gameboard->map();
 	BOOST_FOREACH(map_location const& loc, std::make_pair(path.begin()+1,path.end()))
 		result += u.movement_cost(map[loc]);
 	return result;
@@ -132,7 +132,11 @@ temporary_unit_hider::temporary_unit_hider(unit& u)
 		: unit_(&u)
 	{unit_->set_hidden(true);}
 temporary_unit_hider::~temporary_unit_hider()
-	{unit_->set_hidden(false);}
+{
+	try {
+		unit_->set_hidden(false);
+	} catch (...) {}
+}
 
 void ghost_owner_unit(unit* unit)
 {

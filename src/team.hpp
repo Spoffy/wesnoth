@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 
 #include "color_range.hpp"
 #include "game_config.hpp"
+#include "make_enum.hpp"
 #include "savegame_config.hpp"
 #include "unit.hpp"
 
@@ -31,6 +32,26 @@ namespace wb {
  */
 class team : public savegame::savegame_config
 {
+public:
+	//enum CONTROLLER { HUMAN, AI, NETWORK, NETWORK_AI, IDLE, EMPTY };
+	//enum DEFEAT_CONDITION {NO_LEADER, NO_UNITS, NEVER, ALWAYS};
+
+	MAKE_ENUM(CONTROLLER,
+		(HUMAN, 	"human")
+		(AI, 		"ai")
+		(NETWORK, 	"network")
+		(NETWORK_AI, 	"network_ai")
+		(IDLE,		"idle")
+		(EMPTY,		"null")
+	)
+	MAKE_ENUM(DEFEAT_CONDITION,
+		(NO_LEADER, "no_leader_left")
+		(NO_UNITS, "no_units_left")
+		(NEVER, "never")
+		(ALWAYS, "always")
+	)
+
+private:
 	class shroud_map {
 	public:
 		shroud_map() : enabled_(false), data_() {}
@@ -92,13 +113,13 @@ class team : public savegame::savegame_config
 		 * displayed to the user. */
 		bool objectives_changed;
 
-		enum CONTROLLER { HUMAN, HUMAN_AI, AI, NETWORK, NETWORK_AI, EMPTY };
 		CONTROLLER controller;
-		char const *controller_string() const;
+		DEFEAT_CONDITION defeat_condition;
 
 		bool share_maps, share_view;
 		bool disallow_observers;
 		bool allow_player;
+		bool chose_random;
 		bool no_leader;
 		bool hidden;
 		bool no_turn_confirmation;  // Can suppress confirmations when ending a turn.
@@ -107,6 +128,7 @@ class team : public savegame::savegame_config
 
 		int side;
 		bool persistent;
+		bool lost;
 	};
 
 	static const int default_team_gold_;
@@ -117,7 +139,7 @@ public:
 
 	/// Stores the attributes recognized by [side]. These should be stripped
 	/// from a side's config before using it to create the side's leader.
-	static const char * const attributes[];
+	static const std::set<std::string> attributes;
 
 	void build(const config &cfg, const gamemap &map, int gold = default_team_gold_);
 
@@ -164,6 +186,7 @@ public:
 		{ info_.current_player = player; }
 
 	bool get_scroll_to_leader() const {return info_.scroll_to_leader;}
+	void set_scroll_to_leader(bool value) { info_.scroll_to_leader = value; }
 
 	const std::set<std::string>& recruits() const
 		{ return info_.can_recruit; }
@@ -174,7 +197,10 @@ public:
 	void last_recruit(const std::string & u_type) { last_recruit_ = u_type; }
 	const std::string& name() const
 		{ return info_.name; }
+
+	void set_name(const std::string& name) { info_.name = name; }
 	const std::string& save_id() const { return info_.save_id; }
+	void set_save_id(const std::string& save_id) { info_.save_id = save_id; }
 	const std::string& current_player() const { return info_.current_player; }
 
 	void set_objectives(const t_string& new_objectives, bool silently=false);
@@ -193,26 +219,28 @@ public:
 		}
 	}
 
-	team_info::CONTROLLER controller() const { return info_.controller; }
-	char const *controller_string() const { return info_.controller_string(); }
+	CONTROLLER controller() const { return info_.controller; }
 	const std::string& color() const { return info_.color; }
 	void set_color(const std::string& color) { info_.color = color; }
-	bool is_human() const { return info_.controller == team_info::HUMAN; }
-	bool is_human_ai() const { return info_.controller == team_info::HUMAN_AI; }
-	bool is_network_human() const { return info_.controller == team_info::NETWORK; }
-	bool is_network_ai() const { return info_.controller == team_info::NETWORK_AI; }
-	bool is_ai() const { return info_.controller == team_info::AI || is_human_ai(); }
-	bool is_empty() const { return info_.controller == team_info::EMPTY; }
+	bool is_human() const { return info_.controller == HUMAN; }
+	bool is_network_human() const { return info_.controller == NETWORK; }
+	bool is_network_ai() const { return info_.controller == NETWORK_AI; }
+	bool is_ai() const { return info_.controller == AI; }
+	bool is_idle() const { return info_.controller == IDLE; }
+	bool is_empty() const { return info_.controller == EMPTY; }
 
-	bool is_local() const { return is_human() || is_ai(); }
+	bool is_local() const { return is_human() || is_ai() || is_idle(); }
 	bool is_network() const { return is_network_human() || is_network_ai(); }
 
-	void make_human() { info_.controller = team_info::HUMAN; }
-	void make_human_ai() { info_.controller = team_info::HUMAN_AI; }
-	void make_network() { info_.controller = team_info::NETWORK; }
-	void make_network_ai() { info_.controller = team_info::NETWORK_AI; }
-	void make_ai() { info_.controller = team_info::AI; }
-	void change_controller(const std::string& controller);
+	void make_human() { info_.controller = HUMAN; }
+	void make_network() { info_.controller = NETWORK; }
+	void make_network_ai() { info_.controller = NETWORK_AI; }
+	void make_ai() { info_.controller = AI; }
+	void make_idle() { info_.controller = IDLE; }
+	void change_controller(const std::string& new_controller) {
+		info_.controller = lexical_cast_default<CONTROLLER> (new_controller, AI);
+	}
+	void change_controller(CONTROLLER controller) { info_.controller = controller; }
 
 	const std::string& team_name() const { return info_.team_name; }
 	const t_string &user_team_name() const { return info_.user_team_name; }
@@ -220,6 +248,9 @@ public:
 
 	const std::string& flag() const { return info_.flag; }
 	const std::string& flag_icon() const { return info_.flag_icon; }
+
+	void set_flag(const std::string& flag) { info_.flag = flag; }
+	void set_flag_icon(const std::string& flag_icon) { info_.flag_icon = flag_icon; }
 
 	//Returns true if the hex is shrouded/fogged for this side, or
 	//any other ally with shared vision.
@@ -249,12 +280,18 @@ public:
 
 	bool auto_shroud_updates() const { return auto_shroud_updates_; }
 	void set_auto_shroud_updates(bool value) { auto_shroud_updates_ = value; }
-	bool get_disallow_observers() const {return info_.disallow_observers; };
+	bool get_disallow_observers() const {return info_.disallow_observers; }
 	bool no_leader() const { return info_.no_leader; }
+	DEFEAT_CONDITION defeat_condition() const { return info_.defeat_condition; }
+	void set_defeat_condition(DEFEAT_CONDITION value) { info_.defeat_condition = value; }
+	///sets the defeat condition if @param value is a valid defeat condition, otherwise nothing happes.
+	void set_defeat_condition_string(const std::string& value) { info_.defeat_condition = lexical_cast_default<team::DEFEAT_CONDITION>(value, info_.defeat_condition); }
 	void have_leader(bool value=true) { info_.no_leader = !value; }
 	bool hidden() const { return info_.hidden; }
 	void set_hidden(bool value) { info_.hidden=value; }
 	bool persistent() const {return info_.persistent;}
+	void set_lost(bool value=true) { info_.lost = value; }
+	bool lost() const { return info_.lost; }
 	bool no_turn_confirmation() const { return info_.no_turn_confirmation; }
 	void set_no_turn_confirmation(bool value) { info_.no_turn_confirmation = value; }
 
@@ -271,7 +308,7 @@ public:
 	static std::string get_side_highlight(int side);
 	static std::string get_side_highlight_pango(int side);
 
-	void log_recruitable();
+	void log_recruitable() const;
 
 	/**set the share maps attribute */
 	void set_share_maps( bool share_maps );
@@ -282,7 +319,7 @@ public:
 	static void clear_caches();
 
 	/** get the whiteboard planned actions for this team */
-	boost::shared_ptr<wb::side_actions> get_side_actions() { return planned_actions_; }
+	boost::shared_ptr<wb::side_actions> get_side_actions() const { return planned_actions_; }
 
 	config to_config() const;
 
@@ -321,6 +358,9 @@ private:
 	 */
 	boost::shared_ptr<wb::side_actions> planned_actions_;
 };
+
+MAKE_ENUM_STREAM_OPS2(team, CONTROLLER)
+MAKE_ENUM_STREAM_OPS2(team, DEFEAT_CONDITION)
 
 namespace teams_manager {
 	const std::vector<team> &get_teams();

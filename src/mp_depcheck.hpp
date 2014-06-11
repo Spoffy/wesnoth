@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2012 - 2013 by Boldizsár Lipka <lipkab@zoho.com>
+   Copyright (C) 2012 - 2014 by Boldizsár Lipka <lipkab@zoho.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -18,8 +18,9 @@
 #include <string>
 #include <vector>
 #include "config.hpp"
-#include "game_display.hpp"
 #include "gettext.hpp"
+
+class CVideo;
 
 namespace mp
 {
@@ -76,6 +77,15 @@ public:
 						   bool force = false	);
 
 	/**
+	 * Tries to enable/disable a specific modification
+	 *
+	 * @param index     the index of the modification
+	 * @param activate  activate or deactivate
+	 * @param force     whether to skip dependency check
+	 */
+	void try_modification_by_index(int index, bool activate, bool force = false);
+
+	/**
 	 * Tries to set the selected era
 	 *
 	 * @param index 	the index of the era
@@ -111,6 +121,15 @@ public:
 	 * @return the ids of the modifications
 	 */
 	const std::vector<std::string>& get_modifications() const { return mods_; }
+
+	/**
+	 * Tells whether a certain mod is activated.
+	 *
+	 * @param index the index of the mod
+	 *
+	 * @return true if activated, false is not
+	 */
+	bool is_modification_active(int index) const;
 
 	/**
 	 * Returns the selected era

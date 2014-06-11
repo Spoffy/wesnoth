@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -39,10 +39,12 @@ struct time_of_day;
 class map_labels;
 class arrow;
 
+#include "display_context.hpp"
 #include "font.hpp"
 #include "key.hpp"
 #include "team.hpp"
 #include "time_of_day.hpp"
+#include "sdl/rect.hpp"
 #include "theme.hpp"
 #include "video.hpp"
 #include "widgets/button.hpp"
@@ -61,19 +63,21 @@ class gamemap;
 class display
 {
 public:
-	display(unit_map* units, CVideo& video, const gamemap* map, const std::vector<team>* t,
+	display(const display_context * dc, CVideo& video,
 			const config& theme_cfg, const config& level);
 	virtual ~display();
 	static display* get_singleton() { return singleton_ ;}
 
-	bool show_everything() const { return !viewpoint_; }
+	bool show_everything() const { return !viewpoint_ && !is_blindfolded(); }
 
-	const std::vector<team>& get_teams() const {return *teams_;}
+	const gamemap& get_map() const { return dc_->map(); }
+
+	const std::vector<team>& get_teams() const {return dc_->teams();}
 
 	/** The playing team is the team whose turn it is. */
 	size_t playing_team() const { return activeTeam_; }
 
-	bool team_valid() const { return currentTeam_ < teams_->size(); }
+	bool team_valid() const { return currentTeam_ < dc_->teams().size(); }
 
 	/** The viewing team is the team currently viewing the game. */
 	size_t viewing_team() const { return currentTeam_; }
@@ -95,14 +99,13 @@ public:
 	 * Cancels all the exclusive draw requests.
 	 */
 	void clear_exclusive_draws() { exclusive_unit_draw_requests_.clear(); }
-	unit_map& get_units() {return *units_;}
-	const unit_map& get_const_units() const {return *units_;}
+	const unit_map& get_units() const {return dc_->units();}
 
 	/**
 	 * Allows a unit to request to be the only one drawn in its hex. Useful for situations where
 	 * multiple units (one real, multiple temporary) can end up stacked, such as with the whiteboard.
 	 * @param loc The location of the unit requesting exclusivity.
-	 * @param unit The unit requesting exlusivity.
+	 * @param unit The unit requesting exclusivity.
 	 * @return false if there's already an exclusive draw request for this location.
 	 */
 	bool add_exclusive_draw(const map_location& loc, unit& unit);
@@ -117,6 +120,11 @@ public:
 			const map_location& loc, size_t height, double filled,
 			const SDL_Color& col, fixed_t alpha);
 
+	/**
+	 * Check the overlay_map for proper team-specific overlays to be
+	 * displayed/hidden
+	 */
+	void parse_team_overlays();
 
 	/**
 	 * Functions to add and remove overlays from locations.
@@ -147,9 +155,7 @@ public:
 	 */
 	void reload_map();
 
-	void change_map(const gamemap* m);
-	void change_teams(const std::vector<team>* teams);
-	void change_units(unit_map* units);
+	void change_display_context(const display_context * dc);
 
 	static Uint32 rgb(Uint8 red, Uint8 green, Uint8 blue)
 		{ return 0xFF000000 | (red << 16) | (green << 8) | blue; }
@@ -200,7 +206,7 @@ public:
 		{ return theme_.unit_image_location(screen_area()); }
 
 	SDL_Rect screen_area() const
-		{ return create_rect(0, 0, w(), h()); }
+		{ return sdl::create_rect(0, 0, w(), h()); }
 
 	/**
 	 * Returns the maximum area used for the map
@@ -288,13 +294,13 @@ public:
 		/**  very simple iterator to walk into the rect_of_hexes */
 		struct iterator {
 			iterator(const map_location &loc, const rect_of_hexes &rect)
-				: loc_(loc), rect_(rect){};
+				: loc_(loc), rect_(rect){}
 
 			/** increment y first, then when reaching bottom, increment x */
 			iterator& operator++();
 			bool operator==(const iterator &that) const { return that.loc_ == loc_; }
 			bool operator!=(const iterator &that) const { return that.loc_ != loc_; }
-			const map_location& operator*() const {return loc_;};
+			const map_location& operator*() const {return loc_;}
 
 			typedef std::forward_iterator_tag iterator_category;
 			typedef map_location value_type;
@@ -316,15 +322,15 @@ public:
 	const rect_of_hexes hexes_under_rect(const SDL_Rect& r) const;
 
 	/** Returns the rectangular area of visible hexes */
-	const rect_of_hexes get_visible_hexes() const {return hexes_under_rect(map_area());};
+	const rect_of_hexes get_visible_hexes() const {return hexes_under_rect(map_area());}
 
 	/** Returns true if location (x,y) is covered in shroud. */
 	bool shrouded(const map_location& loc) const {
-		return viewpoint_ && viewpoint_->shrouded(loc);
+		return is_blindfolded() || (viewpoint_ && viewpoint_->shrouded(loc));
 	}
 	/** Returns true if location (x,y) is covered in fog. */
 	bool fogged(const map_location& loc) const {
-		return viewpoint_ && viewpoint_->fogged(loc);
+		return is_blindfolded() || (viewpoint_ && viewpoint_->fogged(loc));
 	}
 
 	/**
@@ -405,15 +411,13 @@ public:
 	  * helper function for invalidate_animations
 	  * returns a list of units to check for invalidation
 	  */
-	virtual std::vector<unit*> get_unit_list_for_invalidation();
+	virtual std::vector<const unit*> get_unit_list_for_invalidation();
 
 	/**
 	 * Per-location invalidation called by invalidate_animations()
 	 * Extra game per-location invalidation (village ownership)
 	 */
 	void invalidate_animations_location(const map_location& loc);
-
-	const gamemap& get_map() const { return *map_; }
 
 	/**
 	 * mouseover_hex_overlay_ require a prerendered surface
@@ -444,7 +448,7 @@ public:
 	 */
 	static void toggle_debug_foreground();
 
-	terrain_builder& get_builder() {return *builder_;};
+	terrain_builder& get_builder() {return *builder_;}
 
 	void flip();
 
@@ -512,7 +516,7 @@ public:
 	bool view_locked() const { return view_locked_; }
 
 	/** Sets whether the map view is locked (e.g. so the user can't scroll away) */
-	void set_view_locked(bool value) { view_locked_ = value; };
+	void set_view_locked(bool value) { view_locked_ = value; }
 
 	enum SCROLL_TYPE { SCROLL, WARP, ONSCREEN, ONSCREEN_WARP };
 
@@ -582,7 +586,7 @@ public:
 	 * Schedule the minimap for recalculation.
 	 * Useful if any terrain in the map has changed.
 	 */
-	void recalculate_minimap() {minimap_ = NULL; redrawMinimap_ = true; };
+	void recalculate_minimap() {minimap_ = NULL; redrawMinimap_ = true; }
 
 	/**
 	 * Schedule the minimap to be redrawn.
@@ -590,9 +594,12 @@ public:
 	 */
 	void redraw_minimap() { redrawMinimap_ = true; }
 
-	virtual const time_of_day& get_time_of_day(const map_location& loc = map_location::null_location) const;
+	virtual const time_of_day& get_time_of_day(const map_location& loc = map_location::null_location()) const;
 
-	virtual bool has_time_area() const {return false;};
+	virtual bool has_time_area() const {return false;}
+
+	void blindfold(bool flag);
+	bool is_blindfolded() const;
 
 	void write(config& cfg) const;
 private:
@@ -602,7 +609,12 @@ public:
 	/** Init the flag list and the team colors used by ~TC */
 	void init_flags();
 
+	/** Rebuild the flag list (not team colors) for a single side. */
+	void reinit_flags_for_side(size_t side);
+
 private:
+	void init_flags_for_side_internal(size_t side, const std::string& side_color);
+
 	/**
 	 * Finds the start and end rows on the energy bar image.
 	 *
@@ -610,10 +622,11 @@ private:
 	 */
 	const SDL_Rect& calculate_energy_bar(surface surf);
 
+	int blindfold_ctr_;
 
 protected:
 	//TODO sort
-	unit_map* units_;
+	const display_context * dc_;
 
 	typedef std::map<map_location, std::string> exclusive_unit_draw_requests_t;
 	/// map of hexes where only one unit should be drawn, the one identified by the associated id string
@@ -671,7 +684,7 @@ protected:
 	 * Called near the end of a draw operation, derived classes can use this
 	 * to render a specific sidebar. Very similar to post_commit.
 	 */
-	virtual void draw_sidebar() {};
+	virtual void draw_sidebar() {}
 
 	/**
 	 * Draws the border tile overlay.
@@ -706,9 +719,7 @@ protected:
 	const std::string& get_variant(const std::vector<std::string>& variants, const map_location &loc) const;
 
 	CVideo& screen_;
-	const gamemap* map_;
 	size_t currentTeam_;
-	const std::vector<team>* teams_;
 	const team *viewpoint_;
 	std::map<surface,SDL_Rect> energy_bar_rects_;
 	int xpos_, ypos_;
@@ -952,7 +963,6 @@ public:
 	 * @param layer              The layer to draw on.
 	 * @param loc                The hex the image belongs to, needed for the
 	 *                           drawing order.
-	 * @param blit               The structure to blit.
 	 */
 	void drawing_buffer_add(const tdrawing_layer layer,
 			const map_location& loc, int x, int y, const surface& surf,
@@ -995,11 +1005,21 @@ public: //operations for the arrow framework
 	/** Called by arrow objects when they change. You should not need to call this directly. */
 	void update_arrow(arrow & a);
 
-private:
+protected:
+
+	// Tiles lit for showing where unit(s) can reach
+	typedef std::map<map_location,unsigned int> reach_map;
+	reach_map reach_map_;
+	reach_map reach_map_old_;
+	bool reach_map_changed_;
+	void process_reachmap_changes();
 
 	typedef std::multimap<map_location, overlay> overlay_map;
 
-	overlay_map overlays_;
+private:
+
+
+	overlay_map* overlays_;
 
 	/** Handle for the label which displays frames per second. */
 	int fps_handle_;
@@ -1031,9 +1051,37 @@ private:
 	bool do_reverse_memcpy_workaround_;
 #endif
 
+public:
+	void replace_overlay_map(overlay_map* overlays) { overlays_ = overlays; }
+
 protected:
 	static display * singleton_;
 };
+
+struct blindfold
+{
+	blindfold(display& d, bool lock=true) : display_(d), blind(lock) {
+		if(blind) {
+			display_.blindfold(true);
+		}
+	}
+
+	~blindfold() {
+		unblind();
+	}
+
+	void unblind() {
+		if(blind) {
+			display_.blindfold(false);
+			blind = false;
+		}
+	}
+
+private:
+	display& display_;
+	bool blind;
+};
+
 
 #endif
 

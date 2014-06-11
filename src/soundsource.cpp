@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Karol Nowak <grzywacz@sul.uni.lodz.pl>
+   Copyright (C) 2006 - 2014 by Karol Nowak <grzywacz@sul.uni.lodz.pl>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -25,8 +25,6 @@ namespace soundsource {
 
 const unsigned DEFAULT_CHANCE           = 100;
 const unsigned DEFAULT_DELAY            = 1000;
-const unsigned DEFAULT_FULL_RANGE       = 3;
-const unsigned DEFAULT_FADE_RANGE       = 14;
 
 unsigned int positional_source::last_id = 0;
 

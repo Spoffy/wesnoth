@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2011 - 2013 by Lukasz Dobrogowski <lukasz.dobrogowski@gmail.com>
+   Copyright (C) 2011 - 2014 by Lukasz Dobrogowski <lukasz.dobrogowski@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 #include "serialization/string_utils.hpp"
 #include "util.hpp"
 #include "lua/llimits.h"
+#include "log.hpp"
 
 #include <boost/version.hpp>
 #include <boost/foreach.hpp>
@@ -48,8 +49,7 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	campaign_difficulty(),
 	campaign_scenario(),
 	clock(false),
-	config_path(false),
-	config_dir(),
+	data_path(false),
 	data_dir(),
 	debug(false),
 	debug_lua(false),
@@ -67,6 +67,7 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	log(),
 	load(),
 	logdomains(),
+	log_precise_timestamps(false),
 	multiplayer(false),
 	multiplayer_ai_config(),
 	multiplayer_algorithm(),
@@ -76,6 +77,7 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	multiplayer_ignore_map_settings(),
 	multiplayer_label(),
 	multiplayer_parm(),
+	multiplayer_repeat(),
 	multiplayer_scenario(),
 	multiplayer_side(),
 	multiplayer_turns(),
@@ -85,7 +87,6 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	nogui(false),
 	nomusic(false),
 	nosound(false),
-	new_storyscreens(false),
 	new_widgets(false),
 	path(false),
 	preprocess(false),
@@ -109,6 +110,13 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	screenshot_output_file(),
 	strict_validation(false),
 	test(),
+	unit_test(),
+	headless_unit_test(false),
+	noreplaycheck(false),
+	userconfig_path(false),
+	userconfig_dir(),
+	userdata_path(false),
+	userdata_dir(),
 	validcache(false),
 	version(false),
 	windowed(false),
@@ -126,9 +134,10 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		("bunzip2", po::value<std::string>(), "decompresses a file (<arg>.bz2) in bzip2 format and stores it without the .bz2 suffix. <arg>.bz2 will be removed.")
 		("bzip2", po::value<std::string>(), "compresses a file (<arg>) in bzip2 format, stores it as <arg>.bz2 and removes <arg>.")
 		("clock", "Adds the option to show a clock for testing the drawing timer.")
-		("config-dir", po::value<std::string>(), "sets the path of the user config directory to $HOME/<arg> or My Documents\\My Games\\<arg> for Windows. You can specify also an absolute path outside the $HOME or My Documents\\My Games directory.")
-		("config-path", "prints the path of the user config directory and exits.")
+		("config-dir", po::value<std::string>(), "sets the path of the userdata directory to $HOME/<arg> or My Documents\\My Games\\<arg> for Windows. You can specify also an absolute path outside the $HOME or My Documents\\My Games directory. DEPRECATED: use userdata-path and userconfig-path instead.")
+		("config-path", "prints the path of the userdata directory and exits. DEPRECATED: use userdata-path and userconfig-path instead.")
 		("data-dir", po::value<std::string>(), "overrides the data directory with the one specified.")
+		("data-path", "prints the path of the data directory and exits.")
 		("debug,d", "enables additional command mode options in-game.")
 		("debug-lua", "enables some Lua debugging mechanisms")
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
@@ -152,7 +161,10 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		("username", po::value<std::string>(), "uses <username> when connecting to a server, ignoring other preferences.")
 		("password", po::value<std::string>(), "uses <password> when connecting to a server, ignoring other preferences.")
 		("strict-validation", "makes validation errors fatal")
-		("test,t", po::value<std::string>()->implicit_value(std::string()), "runs the game in a small test scenario. If specified, scenario <arg> will be used instead.")
+		("userconfig-dir", po::value<std::string>(), "sets the path of the user config directory to $HOME/<arg> or My Documents\\My Games\\<arg> for Windows. You can specify also an absolute path outside the $HOME or My Documents\\My Games directory. Defaults to $HOME/.config/wesnoth on X11 and to the userdata-dir on other systems.")
+		("userconfig-path", "prints the path of the user config directory and exits.")
+		("userdata-dir", po::value<std::string>(), "sets the path of the userdata directory to $HOME/<arg> or My Documents\\My Games\\<arg> for Windows. You can specify also an absolute path outside the $HOME or My Documents\\My Games directory.")
+		("userdata-path", "prints the path of the userdata directory and exits.")
 		("validcache", "assumes that the cache is valid. (dangerous)")
 		("version,v", "prints the game's version number and exits.")
 		("with-replay", "replays the file loaded with the --load option.")
@@ -183,6 +195,7 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		("log-warning", po::value<std::string>(), "sets the severity level of the specified log domain(s) to 'warning'. Similar to --log-error.")
 		("log-info", po::value<std::string>(), "sets the severity level of the specified log domain(s) to 'info'. Similar to --log-error.")
 		("log-debug", po::value<std::string>(), "sets the severity level of the specified log domain(s) to 'debug'. Similar to --log-error.")
+		("log-precise", "shows the timestamps in the logfile with more precision")
 		;
 
 	po::options_description multiplayer_opts("Multiplayer options");
@@ -195,11 +208,22 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		("exit-at-end", "exit Wesnoth at the end of the scenario.")
 		("ignore-map-settings", "do not use map settings.")
 		("label", po::value<std::string>(), "sets the label for AIs.") //TODO is the description precise? this option was undocumented before.
+		("multiplayer-repeat",  po::value<unsigned int>(), "repeats a multiplayer game after it is finished <arg> times.")
 		("nogui", "runs the game without the GUI.")
 		("parm", po::value<std::vector<std::string> >()->composing(), "sets additional parameters for this side. <arg> should have format side:name:value.")
 		("scenario", po::value<std::string>(), "selects a multiplayer scenario. The default scenario is \"multiplayer_The_Freelands\".")
 		("side", po::value<std::vector<std::string> >()->composing(), "selects a faction of the current era for this side by id. <arg> should have format side:value.")
 		("turns", po::value<std::string>(), "sets the number of turns. The default is \"50\".")
+		;
+
+	po::options_description testing_opts("Testing options");
+	testing_opts.add_options()
+		("test,t", po::value<std::string>()->implicit_value(std::string()), "runs the game in a small test scenario. If specified, scenario <arg> will be used instead.")
+		("unit,u", po::value<std::string>()->implicit_value(std::string()), "runs a unit test scenario. Works like test, except that the exit code of the program reflects the victory / defeat conditions of the scenario.\n\t0 - PASS\n\t1 - FAIL\n\t2 - FAIL (TIMEOUT)\n\t3 - FAIL (INVALID REPLAY)\n\t4 - FAIL (ERRORED REPLAY)")
+		("showgui", "don't run headlessly (for debugging a failing test)")
+		("timeout", po::value<unsigned int>(), "sets a timeout (milliseconds) for the unit test. (DEPRECATED)")
+		("log-strict", po::value<std::string>(), "sets the strict level of the logger. any messages sent to log domains of this level or more severe will cause the unit test to fail regardless of the victory result.")
+		("noreplaycheck", "don't try to validate replay of unit test")
 		;
 
 	po::options_description preprocessor_opts("Preprocessor mode options");
@@ -219,10 +243,10 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		("proxy-password", po::value<std::string>(), "specifies password to log in to the proxy.")
 		;
 
-	hidden_.add_options()
-		("new-storyscreens", "")
-		;
-	visible_.add(general_opts).add(campaign_opts).add(display_opts).add(logging_opts).add(multiplayer_opts).add(preprocessor_opts).add(proxy_opts);
+	//hidden_.add_options()
+	//	("example-hidden-option", "")
+	//	;
+	visible_.add(general_opts).add(campaign_opts).add(display_opts).add(logging_opts).add(multiplayer_opts).add(testing_opts).add(preprocessor_opts).add(proxy_opts);
 
 	all_.add(visible_).add(hidden_);
 
@@ -252,13 +276,15 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	if (vm.count("clock"))
 		clock = true;
 	if (vm.count("config-dir"))
-		config_dir = vm["config-dir"].as<std::string>();
+		userdata_dir = vm["config-dir"].as<std::string>(); //TODO: complain and remove
 	if (vm.count("config-path"))
-		config_path = true;
+		userdata_path = true; //TODO: complain and remove
 	if (vm.count("controller"))
 		multiplayer_controller = parse_to_uint_string_tuples_(vm["controller"].as<std::vector<std::string> >());
 	if (vm.count("data-dir"))
 		data_dir = vm["data-dir"].as<std::string>();
+	if (vm.count("data-path"))
+		data_path = true;
 	if (vm.count("debug"))
 		debug = true;
 	if (vm.count("debug-lua"))
@@ -296,21 +322,25 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 	if (vm.count("load"))
 		load = vm["load"].as<std::string>();
 	if (vm.count("log-error"))
-		 parse_log_domains_(vm["log-error"].as<std::string>(),0);
+		 parse_log_domains_(vm["log-error"].as<std::string>(),lg::err.get_severity());
 	if (vm.count("log-warning"))
-		 parse_log_domains_(vm["log-warning"].as<std::string>(),1);
+		 parse_log_domains_(vm["log-warning"].as<std::string>(),lg::warn.get_severity());
 	if (vm.count("log-info"))
-		 parse_log_domains_(vm["log-info"].as<std::string>(),2);
+		 parse_log_domains_(vm["log-info"].as<std::string>(),lg::info.get_severity());
 	if (vm.count("log-debug"))
-		 parse_log_domains_(vm["log-debug"].as<std::string>(),3);
+		 parse_log_domains_(vm["log-debug"].as<std::string>(),lg::debug.get_severity());
 	if (vm.count("logdomains"))
 		logdomains = vm["logdomains"].as<std::string>();
+	if (vm.count("log-precise"))
+		log_precise_timestamps = true;
+	if (vm.count("log-strict"))
+		parse_log_strictness(vm["log-strict"].as<std::string>());
 	if (vm.count("max-fps"))
 		max_fps = vm["max-fps"].as<int>();
 	if (vm.count("multiplayer"))
 		multiplayer = true;
-	if (vm.count("new-storyscreens"))
-		new_storyscreens = true;
+	if (vm.count("multiplayer-repeat"))
+		multiplayer_repeat = vm["multiplayer-repeat"].as<unsigned int>();
 	if (vm.count("new-widgets"))
 		new_widgets = true;
 	if (vm.count("nocache"))
@@ -319,6 +349,8 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		nodelay = true;
 	if (vm.count("nomusic"))
 		nomusic = true;
+	if (vm.count("noreplaycheck"))
+		noreplaycheck = true;
 	if (vm.count("nosound"))
 		nosound = true;
 	if (vm.count("nogui"))
@@ -371,10 +403,29 @@ commandline_options::commandline_options ( int argc, char** argv ) :
 		multiplayer_side = parse_to_uint_string_tuples_(vm["side"].as<std::vector<std::string> >());
 	if (vm.count("test"))
 		test = vm["test"].as<std::string>();
+	if (vm.count("unit"))
+	{
+		unit_test = vm["unit"].as<std::string>();
+		headless_unit_test = true;
+	}
+	if (vm.count("showgui"))
+		headless_unit_test = false;
+	if (vm.count("timeout"))
+		timeout = vm["timeout"].as<unsigned int>();
+	if (vm.count("noreplaycheck"))
+		noreplaycheck = true;
 	if (vm.count("turns"))
 		multiplayer_turns = vm["turns"].as<std::string>();
 	if (vm.count("strict-validation"))
 		strict_validation = true;
+	if (vm.count("userconfig-dir"))
+		userconfig_dir = vm["userconfig-dir"].as<std::string>();
+	if (vm.count("userconfig-path"))
+		userconfig_path = true;
+	if (vm.count("userdata-dir"))
+		userdata_dir = vm["userdata-dir"].as<std::string>();
+	if (vm.count("userdata-path"))
+		userdata_path = true;
 	if (vm.count("validcache"))
 		validcache = true;
 	if (vm.count("version"))
@@ -394,6 +445,18 @@ void commandline_options::parse_log_domains_(const std::string &domains_string, 
 			log = std::vector<boost::tuple<int, std::string> >();
 		log->push_back(boost::tuple<int, std::string>(severity,domain));
 	}
+}
+
+void commandline_options::parse_log_strictness (const std::string & severity ) {
+	static lg::logger const *loggers[] = { &lg::err, &lg::warn, &lg::info, &lg::debug };
+	BOOST_FOREACH (const lg::logger * l, loggers ) {
+		if (severity == l->get_name()) {
+			lg::set_strict_severity(*l);
+			return ;
+		}
+	}
+	std::cerr << "Unrecognized argument to --log-strict : " << severity << " . \nDisabling strict mode logging." << std::endl;
+	lg::set_strict_severity(-1);
 }
 
 void commandline_options::parse_resolution_ ( const std::string& resolution_string )

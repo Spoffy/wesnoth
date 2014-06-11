@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2004 - 2013 by Philippe Plantier <ayin@anathas.org>
+   Copyright (C) 2004 - 2014 by Philippe Plantier <ayin@anathas.org>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org
 
    This program is free software; you can redistribute it and/or modify
@@ -14,6 +14,7 @@
 
 #include "exploder_cutter.hpp"
 #include "filesystem.hpp"
+#include "sdl/rect.hpp"
 #include "serialization/parser.hpp"
 #include "serialization/preprocessor.hpp"
 #include "serialization/string_utils.hpp"
@@ -137,7 +138,7 @@ void cutter::add_sub_image(const surface &surf, surface_map &map, const config* 
 	int x = atoi(pos[0].c_str());
 	int y = atoi(pos[1].c_str());
 
-	const SDL_Rect cut = create_rect(x - mask.shift.x
+	const SDL_Rect cut = sdl::create_rect(x - mask.shift.x
 			, y - mask.shift.y
 			, mask.image->w
 			, mask.image->h);

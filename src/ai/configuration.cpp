@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Yurii Chernyi <terraninfo@terraninfo.net>
+   Copyright (C) 2009 - 2014 by Yurii Chernyi <terraninfo@terraninfo.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -47,7 +47,7 @@ public:
 	{
 	}
 
-	virtual ~well_known_aspect() {};
+	virtual ~well_known_aspect() {}
 
 	std::string name_;
 	bool was_an_attribute_;
@@ -75,14 +75,15 @@ void configuration::init(const config &game_config)
 	well_known_aspects.push_back(well_known_aspect("number_of_possible_recruits_to_force_recruit"));
 	well_known_aspects.push_back(well_known_aspect("passive_leader"));
 	well_known_aspects.push_back(well_known_aspect("passive_leader_shares_keep"));
-	//well_known_aspects.push_back(well_known_aspect("protect_leader"));
-	//well_known_aspects.push_back(well_known_aspect("protect_leader_radius"));
-	//well_known_aspects.push_back(well_known_aspect("protect_location",false));
-	//well_known_aspects.push_back(well_known_aspect("protect_unit",false));
 	well_known_aspects.push_back(well_known_aspect("recruitment"));
+	well_known_aspects.push_back(well_known_aspect("recruitment_diversity"));
 	well_known_aspects.push_back(well_known_aspect("recruitment_ignore_bad_combat"));
 	well_known_aspects.push_back(well_known_aspect("recruitment_ignore_bad_movement"));
+	well_known_aspects.push_back(well_known_aspect("recruitment_instructions"));
+	well_known_aspects.push_back(well_known_aspect("recruitment_more"));
 	well_known_aspects.push_back(well_known_aspect("recruitment_pattern"));
+	well_known_aspects.push_back(well_known_aspect("recruitment_randomness"));
+	well_known_aspects.push_back(well_known_aspect("recruitment_save_gold"));
 	well_known_aspects.push_back(well_known_aspect("scout_village_targeting"));
 	well_known_aspects.push_back(well_known_aspect("simple_targeting"));
 	well_known_aspects.push_back(well_known_aspect("support_villages"));
@@ -220,7 +221,7 @@ const config& configuration::get_default_ai_parameters()
 }
 
 
-bool configuration::upgrade_aspect_config_from_1_07_02_to_1_07_03(side_number /*side*/, const config& cfg, config& parsed_cfg, const std::string &id, bool aspect_was_attribute)
+bool configuration::upgrade_aspect_config_from_1_07_02_to_1_07_03(side_number side, const config& cfg, config& parsed_cfg, const std::string &id, bool aspect_was_attribute)
 {
 	config aspect_config;
 	aspect_config["id"] = id;
@@ -259,6 +260,7 @@ bool configuration::upgrade_aspect_config_from_1_07_02_to_1_07_03(side_number /*
 
 		aspect_config.add_child("facet",facet_config);
 	}
+	DBG_AI_CONFIGURATION << "side "<< side << " aspect[" << id << "] config :\n"<< cfg << "\n";
 
 	parsed_cfg.add_child("aspect",aspect_config);
 	return true;
@@ -400,7 +402,7 @@ bool configuration::upgrade_side_config_from_1_07_02_to_1_07_03(side_number side
 
 
 		BOOST_FOREACH(const config &aitarget, aiparam.child_range("target")) {
-			lg::wml_error << deprecate_wml_key_warning("target", "1.12.0") << "\n";
+			lg::wml_error << deprecate_wml_key_warning("target", "1.13.0") << "\n";
 			config aigoal;
 			transfer_turns_and_time_of_day_data(aiparam,aigoal);
 
@@ -419,7 +421,7 @@ bool configuration::upgrade_side_config_from_1_07_02_to_1_07_03(side_number side
 
 
 		BOOST_FOREACH(config &ai_protect_unit, aiparam.child_range("protect_unit")) {
-			lg::wml_error << deprecate_wml_key_warning("protect_unit", "1.12.0") << "\n";
+			lg::wml_error << deprecate_wml_key_warning("protect_unit", "1.13.0") << "\n";
 			transfer_turns_and_time_of_day_data(aiparam,ai_protect_unit);
 			upgrade_protect_goal_config_from_1_07_02_to_1_07_03(side,ai_protect_unit,parsed_cfg,true);
 		}
@@ -427,7 +429,7 @@ bool configuration::upgrade_side_config_from_1_07_02_to_1_07_03(side_number side
 
 
 		BOOST_FOREACH(config &ai_protect_location, aiparam.child_range("protect_location")) {
-			lg::wml_error << deprecate_wml_key_warning("protect_location", "1.12.0") << "\n";
+			lg::wml_error << deprecate_wml_key_warning("protect_location", "1.13.0") << "\n";
 			transfer_turns_and_time_of_day_data(aiparam,ai_protect_location);
 			upgrade_protect_goal_config_from_1_07_02_to_1_07_03(side,ai_protect_location,parsed_cfg,false);
 		}
@@ -436,14 +438,14 @@ bool configuration::upgrade_side_config_from_1_07_02_to_1_07_03(side_number side
 
 		if (const config::attribute_value *v = aiparam.get("protect_leader"))
 		{
-			lg::wml_error << deprecate_wml_key_warning("protect_leader", "1.12.0") << "\n";
+			lg::wml_error << deprecate_wml_key_warning("protect_leader", "1.13.0") << "\n";
 			config c;
 			c["value"] = *v;
 			c["canrecruit"] = true;
 			c["side_number"] = side;
 			transfer_turns_and_time_of_day_data(aiparam,c);
 			if (const config::attribute_value *v = aiparam.get("protect_leader_radius")) {
-				lg::wml_error << deprecate_wml_key_warning("protect_leader_radius", "1.12.0") << "\n";
+				lg::wml_error << deprecate_wml_key_warning("protect_leader_radius", "1.13.0") << "\n";
 				c["radius"] = *v;
 			}
 
@@ -452,7 +454,14 @@ bool configuration::upgrade_side_config_from_1_07_02_to_1_07_03(side_number side
 
 		if (!aiparam.has_attribute("turns") && !aiparam.has_attribute("time_of_day")) {
 			fallback_stage_cfg_ai.append(aiparam);
-		}
+		} else {
+			// Move [goal]s to root of the config, adding turns and time_of_day.
+			BOOST_FOREACH(const config &aigoal, aiparam.child_range("goal")) {
+				config updated_goal_config = aigoal;
+				transfer_turns_and_time_of_day_data(aiparam, updated_goal_config);
+				parsed_cfg.add_child("goal", updated_goal_config);
+			}
+                }
 	}
 	fallback_stage_cfg_ai.clear_children("aspect");
 

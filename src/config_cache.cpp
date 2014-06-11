@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2008 - 2013 by Pauli Nieminen <paniemin@cc.hut.fi>
+   Copyright (C) 2008 - 2014 by Pauli Nieminen <paniemin@cc.hut.fi>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -29,6 +29,7 @@
 
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 
 static lg::log_domain log_cache("cache");
 #define ERR_CACHE LOG_STREAM(err, log_cache)
@@ -56,7 +57,7 @@ namespace game_config {
 	struct output {
 		void operator()(const preproc_map::value_type& def)
 		{
-			DBG_CACHE << "key: " << def.first << " " << def.second << "\n";
+			DBG_CACHE << "key: " << def.first << " " << def.second << std::endl;
 		}
 	};
 	const preproc_map& config_cache::get_preproc_map() const
@@ -66,7 +67,7 @@ namespace game_config {
 
 	void config_cache::clear_defines()
 	{
-		LOG_CACHE << "Clearing defines map!\n";
+		LOG_CACHE << "Clearing defines map!" << std::endl;
 		defines_map_.clear();
 		// set-up default defines map
 
@@ -162,7 +163,7 @@ namespace game_config {
 				// it should be safe to rely on caches containing it.
 				if(i->first != "WESNOTH_VERSION") {
 					is_valid = false;
-					ERR_CACHE << "Preprocessor define not valid\n";
+					ERR_CACHE << "Preprocessor define not valid" << std::endl;
 					break;
 				}
 			}
@@ -192,9 +193,9 @@ namespace game_config {
 							dir_checksum = file_tree_checksum(checksum_cfg);
 						}
 					} catch(config::error&) {
-						ERR_CACHE << "cache checksum is corrupt\n";
+						ERR_CACHE << "cache checksum is corrupt" << std::endl;
 					} catch(io_exception&) {
-						ERR_CACHE << "error reading cache checksum\n";
+						ERR_CACHE << "error reading cache checksum" << std::endl;
 					}
 				}
 
@@ -214,9 +215,12 @@ namespace game_config {
 						}
 						return;
 					} catch(config::error& e) {
-						ERR_CACHE << "cache " << fname << extension << " is corrupt. Loading from files: "<< e.message<<"\n";
+						ERR_CACHE << "cache " << fname << extension << " is corrupt. Loading from files: "<< e.message<< std::endl;
 					} catch(io_exception&) {
-						ERR_CACHE << "error reading cache " << fname << extension << ". Loading from files\n";
+						ERR_CACHE << "error reading cache " << fname << extension << ". Loading from files" << std::endl;
+					} catch (boost::iostreams::gzip_error& e) {
+						//read_file -> ... -> read_gz can throw this exception.
+						ERR_CACHE << "cache " << fname << extension << " is corrupt. Error code: " << e.error() << std::endl;
 					}
 				}
 
@@ -237,7 +241,7 @@ namespace game_config {
 					data_tree_checksum().write(checksum_cfg);
 					write_file(fname_checksum, checksum_cfg);
 				} catch(io_exception&) {
-					ERR_CACHE << "could not write to cache '" << fname << "'\n";
+					ERR_CACHE << "could not write to cache '" << fname << "'" << std::endl;
 				}
 				return;
 			}
@@ -367,9 +371,7 @@ namespace game_config {
 	{
 		if(active_map_.empty())
 		{
-			std::copy(defines_map.begin(),
-					defines_map.end(),
-					std::insert_iterator<preproc_map>(active_map_, active_map_.begin()));
+			active_map_.insert(defines_map.begin(), defines_map.end());
 			if ( get_state() == NEW)
 				state_ = ACTIVE;
 		 }

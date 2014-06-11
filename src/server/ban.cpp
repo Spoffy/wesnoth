@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2008 - 2013 by Pauli Nieminen <paniemin@cc.hut.fi>
+   Copyright (C) 2008 - 2014 by Pauli Nieminen <paniemin@cc.hut.fi>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -18,6 +18,7 @@
 #include "serialization/parser.hpp"
 #include "serialization/binary_or_text.hpp"
 #include "serialization/string_utils.hpp"
+#include "serialization/unicode.hpp"
 #include "util.hpp"
 
 #include "ban.hpp"
@@ -276,7 +277,7 @@ static lg::log_domain log_server("server");
 				if (new_ban->get_end_time() != 0)
 					time_queue_.push(new_ban);
 			} catch (banned::error& e) {
-				ERR_SERVER << e.message << " while reading bans\n";
+				ERR_SERVER << e.message << " while reading bans" << std::endl;
 			}
 		}
 
@@ -289,7 +290,7 @@ static lg::log_domain log_server("server");
 					banned_ptr new_ban(new banned(b));
 					deleted_bans_.push_back(new_ban);
 				} catch (banned::error& e) {
-					ERR_SERVER << e.message << " while reading deleted bans\n";
+					ERR_SERVER << e.message << " while reading deleted bans" << std::endl;
 				}
 			}
 		}
@@ -371,7 +372,7 @@ static lg::log_domain log_server("server");
 			return true;
 		}
 		default_ban_times::const_iterator time_itor = ban_times_.find(duration);
-		if (utils::lowercase(duration) == "permanent" || duration == "0") {
+		if (utf8::lowercase(duration) == "permanent" || duration == "0") {
 			*time = 0;
 		} else if (ban_times_.find(duration) != ban_times_.end()) {
 			*time += time_itor->second;
@@ -495,7 +496,7 @@ static lg::log_domain log_server("server");
 				bans_.erase(ban);
 			}
 		} catch (banned::error& e) {
-			ERR_SERVER << e.message << " while creating dummy ban for finding existing ban\n";
+			ERR_SERVER << e.message << " while creating dummy ban for finding existing ban" << std::endl;
 			return e.message;
 		}
 		try {
@@ -505,7 +506,7 @@ static lg::log_domain log_server("server");
 				time_queue_.push(new_ban);
 			ret << *new_ban;
 		} catch (banned::error& e) {
-			ERR_SERVER << e.message << " while banning\n";
+			ERR_SERVER << e.message << " while banning" << std::endl;
 			return e.message;
 		}
 		dirty_ = true;
@@ -518,7 +519,7 @@ static lg::log_domain log_server("server");
 		try {
 			ban = bans_.find(banned::create_dummy(ip));
 		} catch (banned::error& e) {
-			ERR_SERVER << e.message << "\n";
+			ERR_SERVER << e.message << std::endl;
 			os << e.message;
 			return;
 		}
@@ -703,7 +704,9 @@ static lg::log_domain log_server("server");
 
 	ban_manager::~ban_manager()
 	{
+		try {
 		write();
+		} catch (...) {}
 	}
 
 	ban_manager::ban_manager()

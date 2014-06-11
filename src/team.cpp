@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -20,13 +20,15 @@
 #include "team.hpp"
 
 #include "ai/manager.hpp"
-#include "game_events.hpp"
+#include "game_events/pump.hpp"
 #include "gamestatus.hpp"
+#include "map.hpp"
 #include "resources.hpp"
 #include "game_preferences.hpp"
 #include "whiteboard/side_actions.hpp"
 
 #include <boost/foreach.hpp>
+#include <boost/assign/list_of.hpp>
 
 static lg::log_domain log_engine("engine");
 #define DBG_NG LOG_STREAM(debug, log_engine)
@@ -46,22 +48,20 @@ const int team::default_team_gold_ = 100;
 
 // Update this list of attributes if you change what is used to define a side
 // (excluding those attributes used to define the side's leader).
-const char * const team::attributes[] = {
-	"ai_config", "color", "controller", "current_player", "flag",
-	"flag_icon", "fog", "fog_data", "gold", "hidden", "income",
-	"no_leader", "objectives", "objectives_changed", "persistent",
-	"recall_cost", "recruit", "save_id", "scroll_to_leader",
-	"share_maps", "share_view", "shroud", "shroud_data", "start_gold",
-	"suppress_end_turn_confirmation",
-	"team_name", "user_team_name", "village_gold", "village_support",
+const std::set<std::string> team::attributes = boost::assign::list_of("ai_config")
+	("color")("controller")("current_player")("defeat_condition")("flag")
+	("flag_icon")("fog")("fog_data")("gold")("hidden")("income")
+	("no_leader")("objectives")("objectives_changed")("persistent")("lost")
+	("recall_cost")("recruit")("save_id")("scroll_to_leader")
+	("share_maps")("share_view")("shroud")("shroud_data")("start_gold")
+	("suppress_end_turn_confirmation")
+	("team_name")("user_team_name")("village_gold")("village_support")
 	// Multiplayer attributes.
-	"action_bonus_count", "allow_changes", "allow_player", "color_lock",
-	"countdown_time", "disallow_observers", "faction",
-	"faction_from_recruit", "faction_name", "gold_lock", "income_lock",
-	"leader", "random_leader", "team_lock", "terrain_liked",
-	"user_description",
-	// Terminate the list with NULL.
-	NULL };
+	("action_bonus_count")("allow_changes")("allow_player")("color_lock")
+	("countdown_time")("disallow_observers")("faction")
+	("faction_from_recruit")("faction_name")("gold_lock")("income_lock")
+	("leader")("random_leader")("team_lock")("terrain_liked")
+	("user_description")("default_recruit")("controller_lock")("chose_random");
 
 
 const std::vector<team>& teams_manager::get_teams()
@@ -94,16 +94,19 @@ team::team_info::team_info() :
 	objectives(),
 	objectives_changed(false),
 	controller(),
+	defeat_condition(team::NO_LEADER),
 	share_maps(false),
 	share_view(false),
 	disallow_observers(false),
 	allow_player(false),
+	chose_random(false),
 	no_leader(true),
 	hidden(true),
 	no_turn_confirmation(false),
 	color(),
 	side(0),
-	persistent(false)
+	persistent(false),
+	lost(false)
 {
 }
 
@@ -126,7 +129,9 @@ void team::team_info::read(const config &cfg)
 	objectives_changed = cfg["objectives_changed"].to_bool();
 	disallow_observers = cfg["disallow_observers"].to_bool();
 	allow_player = cfg["allow_player"].to_bool(true);
+	chose_random = cfg["chose_random"].to_bool(false);
 	no_leader = cfg["no_leader"].to_bool();
+	defeat_condition = lexical_cast_default<team::DEFEAT_CONDITION>(cfg["defeat_condition"].str(), team::NO_LEADER);
 	hidden = cfg["hidden"].to_bool();
 	no_turn_confirmation = cfg["suppress_end_turn_confirmation"].to_bool();
 	side = cfg["side"].to_int(1);
@@ -179,29 +184,15 @@ void team::team_info::read(const config &cfg)
 	else
 		support_per_village = lexical_cast_default<int>(village_support, game_config::village_support);
 
-	std::string control = cfg["controller"];
+	controller = lexical_cast_default<team::CONTROLLER> (cfg["controller"].str(), team::AI);
 	//by default, persistence of a team is set depending on the controller
-	persistent = true;
-	if (control == "human")
-		controller = HUMAN;
-	else if (control == "human_ai")
-		controller = HUMAN_AI;
-	else if (control == "network")
-		controller = NETWORK;
-	else if (control == "network_ai")
-		controller = NETWORK_AI;
-	else if (control == "null")
-	{
-		disallow_observers = cfg["disallow_observers"].to_bool(true);
-		controller = EMPTY;
-		persistent = false;
-	}
-	else
-	{
-		controller = AI;
-		persistent = false;
-	}
+	//TODO: Why is network_ai marked persistent?
+	//TODO: Why do we read disallow observers differently when controller is empty?
+	persistent = !(controller == EMPTY || controller == AI);
 
+	if (controller == EMPTY) {
+		disallow_observers = cfg["disallow_observers"].to_bool(true);
+	}
 	//override persistence flag if it is explicitly defined in the config
 	persistent = cfg["persistent"].to_bool(persistent);
 
@@ -215,19 +206,6 @@ void team::team_info::read(const config &cfg)
 
 	LOG_NG << "team_info::team_info(...): team_name: " << team_name
 	       << ", share_maps: " << share_maps << ", share_view: " << share_view << ".\n";
-}
-
-char const *team::team_info::controller_string() const
-{
-	switch(controller) {
-	case AI: return "ai";
-	case HUMAN: return "human";
-	case HUMAN_AI: return "human_ai";
-	case NETWORK: return "network";
-	case NETWORK_AI: return "network_ai";
-	case EMPTY: return "null";
-	default: assert(false); return NULL;
-	}
 }
 
 void team::team_info::write(config& cfg) const
@@ -253,11 +231,13 @@ void team::team_info::write(config& cfg) const
 	cfg["recall_cost"] = recall_cost;
 	cfg["disallow_observers"] = disallow_observers;
 	cfg["allow_player"] = allow_player;
+	cfg["chose_random"] = chose_random;
 	cfg["no_leader"] = no_leader;
+	cfg["defeat_condition"] = DEFEAT_CONDITION_to_string(defeat_condition);
 	cfg["hidden"] = hidden;
 	cfg["suppress_end_turn_confirmation"] = no_turn_confirmation;
 	cfg["scroll_to_leader"] = scroll_to_leader;
-	cfg["controller"] = controller_string();
+	cfg["controller"] = (controller == IDLE ? std::string("human") : CONTROLLER_to_string (controller));
 
 	std::stringstream can_recruit_str;
 	for(std::set<std::string>::const_iterator cr = can_recruit.begin(); cr != can_recruit.end(); ++cr) {
@@ -275,6 +255,7 @@ void team::team_info::write(config& cfg) const
 	cfg["color"] = color;
 
 	cfg["persistent"] = persistent;
+	cfg["lost"] = lost;
 
 	cfg.add_child("ai",ai::manager::to_config(side));
 }
@@ -341,7 +322,7 @@ void team::build(const config &cfg, const gamemap& map, int gold)
 		if (map.is_village(loc)) {
 			villages_.insert(loc);
 		} else {
-			WRN_NG << "[side] " << name() << " [village] points to a non-village location " << loc << "\n";
+			WRN_NG << "[side] " << name() << " [village] points to a non-village location " << loc << std::endl;
 		}
 	}
 
@@ -480,25 +461,6 @@ void team::set_share_maps( bool share_maps ){
 
 void team::set_share_view( bool share_view ){
 	info_.share_view = share_view;
-}
-
-void team::change_controller(const std::string& controller)
-{
-	team::team_info::CONTROLLER cid;
-	if (controller == "human")
-		cid = team::team_info::HUMAN;
-	else if (controller == "human_ai")
-		cid = team::team_info::HUMAN_AI;
-	else if (controller == "network")
-		cid = team::team_info::NETWORK;
-	else if (controller == "network_ai")
-		cid = team::team_info::NETWORK_AI;
-	else if (controller == "null")
-		cid = team::team_info::EMPTY;
-	else
-		cid = team::team_info::AI;
-
-	info_.controller = cid;
 }
 
 void team::change_team(const std::string &name, const t_string &user_name)
@@ -649,7 +611,7 @@ bool is_observer()
 	}
 
 	BOOST_FOREACH(const team &t, *teams) {
-		if (t.is_human() || t.is_human_ai())
+		if (t.is_local())
 			return false;
 	}
 
@@ -861,7 +823,7 @@ std::string team::get_side_highlight_pango(int side)
 	return rgb2highlight_pango(get_side_color_range(side+1).mid());
 }
 
-void team::log_recruitable(){
+void team::log_recruitable() const {
 	LOG_NG << "Adding recruitable units: \n";
 	for (std::set<std::string>::const_iterator it = info_.can_recruit.begin();
 		 it != info_.can_recruit.end(); ++it) {

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -72,16 +72,21 @@ namespace game_config
 			default_victory_music,
 			default_defeat_music;
 
+	namespace colors {
+	std::string moved_orb_color,
+			unmoved_orb_color,
+			partial_orb_color,
+			enemy_orb_color,
+			ally_orb_color;
+	}
+
+	bool show_ally_orb, show_enemy_orb, show_moved_orb, show_partial_orb, show_unmoved_orb;
+
 	namespace images {
 	std::string game_title,
-            game_title_background,
+			game_title_background,
 			// orbs and hp/xp bar
-            orb,
-            moved_orb_color,
-            unmoved_orb_color,
-            partmoved_orb_color,
-            enemy_orb_color,
-            ally_orb_color,
+			orb,
 			energy,
 			// flags
 			flag,
@@ -101,7 +106,7 @@ namespace game_config
 			tod_dark,
 			///@todo de-hardcode this
 			selected_menu = "buttons/radiobox-pressed.png",
-		    deselected_menu = "buttons/radiobox.png",
+			deselected_menu = "buttons/radiobox.png",
 			checked_menu = "buttons/checkbox-pressed.png",
 			unchecked_menu = "buttons/checkbox.png",
 			wml_menu = "buttons/WML-custom.png",
@@ -135,7 +140,7 @@ namespace game_config
 
 	const version_info wesnoth_version(VERSION);
 	const version_info min_savegame_version(MIN_SAVEGAME_VERSION);
-	const std::string  test_version("test");
+	const version_info test_version("test");
 
 	const std::string observer_team_name = "observer";
 
@@ -151,7 +156,9 @@ namespace game_config
 		user_arrive = "arrive.wav",
 		user_leave = "leave.wav",
 		game_user_arrive = "join.wav",
-		game_user_leave = "leave.wav";
+		game_user_leave = "leave.wav",
+		party_full_bell = "bell.wav",
+		mp_game_begins = "join.wav";
 
 		const std::string button_press = "button.wav",
 		checkbox_release = "checkbox.wav",
@@ -161,16 +168,10 @@ namespace game_config
 		menu_select = "select.wav";
 	}
 
-
-
-#ifdef __AMIGAOS4__
-	std::string path = "PROGDIR:";
-#else
 #ifdef WESNOTH_PATH
 	std::string path = WESNOTH_PATH;
 #else
 	std::string path = "";
-#endif
 #endif
 
 #ifdef DEFAULT_PREFS_PATH
@@ -178,8 +179,6 @@ namespace game_config
 #else
 	std::string default_preferences_path = "";
 #endif
-
-	std::string preferences_dir = "";
 
 	std::vector<server_info> server_list;
 
@@ -201,17 +200,27 @@ namespace game_config
 		default_victory_music = v["default_victory_music"].str();
 		default_defeat_music = v["default_defeat_music"].str();
 
+		if(const config &i = v.child("colors")){
+			using namespace game_config::colors;
+			moved_orb_color = i["moved_orb_color"].str();
+			unmoved_orb_color = i["unmoved_orb_color"].str();
+			partial_orb_color = i["partial_orb_color"].str();
+			enemy_orb_color = i["enemy_orb_color"].str();
+			ally_orb_color = i["ally_orb_color"].str();
+		} // colors
+
+		show_ally_orb = v["show_ally_orb"].to_bool(true);
+		show_enemy_orb = v["show_enemy_orb"].to_bool(false);
+		show_moved_orb = v["show_moved_orb"].to_bool(true);
+		show_partial_orb  = v["show_partly_orb"].to_bool(true);
+		show_unmoved_orb = v["show_unmoved_orb"].to_bool(true);
+
 		if(const config &i = v.child("images")){
 			using namespace game_config::images;
 			game_title = i["game_title"].str();
-            game_title_background = i["game_title_background"].str();
+			game_title_background = i["game_title_background"].str();
 
-            orb = i["orb"].str();
-            moved_orb_color = i["moved_orb_color"].str();
-            unmoved_orb_color = i["unmoved_orb_color"].str();
-            partmoved_orb_color = i["partmoved_orb_color"].str();
-            enemy_orb_color = i["enemy_orb_color"].str();
-            ally_orb_color = i["ally_orb_color"].str();
+			orb = i["orb"].str();
 			energy = i["energy"].str();
 
 			flag = i["flag"].str();
@@ -247,12 +256,13 @@ namespace game_config
 
 		add_color_info(v);
 
-		if (const config::attribute_value *a = v.get("flag_rgb"))
+		if (const config::attribute_value *a = v.get("flag_rgb")) {
 			flag_rgb = a->str();
+		}
 
 		std::string color_string = v["red_green_scale"].str();
 		if(!string2rgb(color_string, red_green_scale)) {
-			ERR_NG << "can't parse color string red_green_scale, ignoring: " << color_string << "\n";
+			ERR_NG << "can't parse color string red_green_scale, ignoring: " << color_string << std::endl;
 		}
 		if (red_green_scale.empty()) {
 			red_green_scale.push_back(0x00FFFF00);
@@ -260,7 +270,7 @@ namespace game_config
 
 		color_string = v["red_green_scale_text"].str();
 		if(!string2rgb(color_string, red_green_scale_text)) {
-			ERR_NG << "can't parse color string red_green_scale_text, ignoring: " << color_string << "\n";
+			ERR_NG << "can't parse color string red_green_scale_text, ignoring: " << color_string << std::endl;
 		}
 		if (red_green_scale_text.empty()) {
 			red_green_scale_text.push_back(0x00FFFF00);
@@ -268,7 +278,7 @@ namespace game_config
 
 		color_string = v["blue_white_scale"].str();
 		if(!string2rgb(color_string, blue_white_scale)) {
-			ERR_NG << "can't parse color string blue_white_scale, ignoring: " << color_string << "\n";
+			ERR_NG << "can't parse color string blue_white_scale, ignoring: " << color_string << std::endl;
 		}
 		if (blue_white_scale.empty()) {
 			blue_white_scale.push_back(0x00FFFFFF);
@@ -276,7 +286,7 @@ namespace game_config
 
 		color_string = v["blue_white_scale_text"].str();
 		if(!string2rgb(color_string, blue_white_scale_text)) {
-			ERR_NG << "can't parse color string blue_white_scale_text, ignoring: " << color_string << "\n";
+			ERR_NG << "can't parse color string blue_white_scale_text, ignoring: " << color_string << std::endl;
 		}
 		if (blue_white_scale_text.empty()) {
 			blue_white_scale_text.push_back(0x00FFFFFF);
@@ -290,6 +300,10 @@ namespace game_config
 			sinf.address = server["address"].str();
 			server_list.push_back(sinf);
 		}
+
+		assert(wesnoth_version.good());
+		assert(min_savegame_version.good());
+		assert(test_version.good());
 	}
 
 	void add_color_info(const config &v)
@@ -298,7 +312,9 @@ namespace game_config
 		{
 			const config::attribute_value *a1 = teamC.get("id"),
 				*a2 = teamC.get("rgb");
-			if (!a1 || !a2) continue;
+			if (!a1 || !a2) {
+				continue;
+			}
 			std::string id = *a1;
 			std::vector<Uint32> temp;
 			if(!string2rgb(*a2, temp)) {
@@ -310,7 +326,9 @@ namespace game_config
 			team_rgb_name[id] = teamC["name"];
 			//generate palette of same name;
 			std::vector<Uint32> tp = palette(team_rgb_range[id]);
-			if (tp.empty()) continue;
+			if (tp.empty()) {
+				continue;
+			}
 			team_rgb_colors.insert(std::make_pair(id,tp));
 			//if this is being used, output log of palette for artists use.
 			DBG_NG << "color palette creation:\n";
@@ -334,7 +352,7 @@ namespace game_config
 			{
 				std::vector<Uint32> temp;
 				if(!string2rgb(rgb.second, temp)) {
-					ERR_NG << "Invalid team color: " << rgb.second << "\n";
+					ERR_NG << "Invalid color palette: " << rgb.second << std::endl;
 				}
 				team_rgb_colors.insert(std::make_pair(rgb.first, temp));
 			}
@@ -346,8 +364,9 @@ namespace game_config
 		std::map<std::string, color_range>::const_iterator i = team_rgb_range.find(name);
 		if(i == team_rgb_range.end()) {
 			std::vector<Uint32> temp;
-			if(!string2rgb(name, temp))
+			if(!string2rgb(name, temp)) {
 				throw config::error(_("Invalid color range: ") + name);
+			}
 			team_rgb_range.insert(std::make_pair(name,color_range(temp)));
 			return color_info(name);
 		}
@@ -361,7 +380,7 @@ namespace game_config
 			std::vector<Uint32> temp;
 			if(!string2rgb(name, temp)) {
 				static std::vector<Uint32> stv;
-				ERR_NG << "Invalid team color: " << name << "\n";
+				ERR_NG << "Invalid color palette: " << name << std::endl;
 				return stv;
 			}
 			team_rgb_colors.insert(std::make_pair(name,temp));

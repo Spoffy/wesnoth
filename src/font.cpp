@@ -1,6 +1,6 @@
 /* vim:set encoding=utf-8: */
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -26,6 +26,8 @@
 #include "text.hpp"
 #include "tooltips.hpp"
 #include "video.hpp"
+#include "sdl/alpha.hpp"
+#include "sdl/rect.hpp"
 #include "serialization/parser.hpp"
 #include "serialization/preprocessor.hpp"
 #include "serialization/string_utils.hpp"
@@ -62,15 +64,15 @@ typedef int subset_id;
 
 struct font_id
 {
-	font_id(subset_id subset, int size) : subset(subset), size(size) {};
+	font_id(subset_id subset, int size) : subset(subset), size(size) {}
 	bool operator==(const font_id& o) const
 	{
 		return subset == o.subset && size == o.size;
-	};
+	}
 	bool operator<(const font_id& o) const
 	{
 		return subset < o.subset || (subset == o.subset && size < o.size);
-	};
+	}
 
 	subset_id subset;
 	int size;
@@ -176,10 +178,10 @@ static std::vector<text_chunk> split_text(std::string const & utf8_text) {
 		return chunks;
 
 	try {
-		utils::utf8_iterator ch(utf8_text);
+		utf8::iterator ch(utf8_text);
 		int sub = char_blocks.get_id(*ch);
 		if (sub >= 0) current_chunk.subset = sub;
-		for(utils::utf8_iterator end = utils::utf8_iterator::end(utf8_text); ch != end; ++ch)
+		for(utf8::iterator end = utf8::iterator::end(utf8_text); ch != end; ++ch)
 		{
 			sub = char_blocks.get_id(*ch);
 			if (sub >= 0 && sub != current_chunk.subset) {
@@ -193,8 +195,8 @@ static std::vector<text_chunk> split_text(std::string const & utf8_text) {
 			chunks.push_back(current_chunk);
 		}
 	}
-	catch(utils::invalid_utf8_exception&) {
-		WRN_FT << "Invalid UTF-8 string: \"" << utf8_text << "\"\n";
+	catch(utf8::invalid_utf8_exception&) {
+		WRN_FT << "Invalid UTF-8 string: \"" << utf8_text << "\"" << std::endl;
 	}
 	return chunks;
 }
@@ -209,7 +211,7 @@ static TTF_Font* open_font(const std::string& fname, int size)
 			if(!file_exists(name)) {
 				name = fname;
 				if(!file_exists(name)) {
-					ERR_FT << "Failed opening font: '" << name << "': No such file or directory\n";
+					ERR_FT << "Failed opening font: '" << name << "': No such file or directory" << std::endl;
 					return NULL;
 				}
 			}
@@ -219,7 +221,7 @@ static TTF_Font* open_font(const std::string& fname, int size)
 		name = "fonts/" + fname;
 		if(!file_exists(name)) {
 			if(!file_exists(fname)) {
-				ERR_FT << "Failed opening font: '" << name << "': No such file or directory\n";
+				ERR_FT << "Failed opening font: '" << name << "': No such file or directory" << std::endl;
 				return NULL;
 			}
 			name = fname;
@@ -228,7 +230,7 @@ static TTF_Font* open_font(const std::string& fname, int size)
 
 	TTF_Font* font = TTF_OpenFont(name.c_str(),size);
 	if(font == NULL) {
-		ERR_FT << "Failed opening font: TTF_OpenFont: " << TTF_GetError() << "\n";
+		ERR_FT << "Failed opening font: TTF_OpenFont: " << TTF_GetError() << std::endl;
 		return NULL;
 	}
 
@@ -320,7 +322,7 @@ manager::manager()
 {
 	const int res = TTF_Init();
 	if(res == -1) {
-		ERR_FT << "Could not initialize true type fonts\n";
+		ERR_FT << "Could not initialize true type fonts" << std::endl;
 		throw error();
 	} else {
 		LOG_FT << "Initialized true type fonts\n";
@@ -349,7 +351,7 @@ void manager::init() const
 	if (!FcConfigAppFontAddDir(FcConfigGetCurrent(),
 		reinterpret_cast<const FcChar8 *>((game_config::path + "/fonts").c_str())))
 	{
-		ERR_FT << "Could not load the true type fonts\n";
+		ERR_FT << "Could not load the true type fonts" << std::endl;
 		throw error();
 	}
 #endif
@@ -360,7 +362,7 @@ void manager::init() const
 		get_files_in_dir(path, &files, NULL, ENTIRE_FILE_PATH);
 		BOOST_FOREACH(const std::string& file, files)
 			if(file.substr(file.length() - 4) == ".ttf" || file.substr(file.length() - 4) == ".ttc")
-				AddFontResource(file.c_str());
+				AddFontResourceA(file.c_str());
 	}
 #endif
 }
@@ -377,7 +379,7 @@ void manager::deinit() const
 		get_files_in_dir(path, &files, NULL, ENTIRE_FILE_PATH);
 		BOOST_FOREACH(const std::string& file, files)
 			if(file.substr(file.length() - 4) == ".ttf" || file.substr(file.length() - 4) == ".ttc")
-				RemoveFontResource(file.c_str());
+				RemoveFontResourceA(file.c_str());
 	}
 #endif
 }
@@ -409,7 +411,7 @@ static void set_font_list(const std::vector<subset_descriptor>& fontlist)
 			if(!file_exists(game_config::path + "/fonts/" + itor->name)) {
 				if(!file_exists("fonts/" + itor->name)) {
 					if(!file_exists(itor->name)) {
-					WRN_FT << "Failed opening font file '" << itor->name << "': No such file or directory\n";
+					WRN_FT << "Failed opening font file '" << itor->name << "': No such file or directory" << std::endl;
 					continue;
 					}
 				}
@@ -417,7 +419,7 @@ static void set_font_list(const std::vector<subset_descriptor>& fontlist)
 		} else {
 			if(!file_exists("fonts/" + itor->name)) {
 				if(!file_exists(itor->name)) {
-					WRN_FT << "Failed opening font file '" << itor->name << "': No such file or directory\n";
+					WRN_FT << "Failed opening font file '" << itor->name << "': No such file or directory" << std::endl;
 					continue;
 				}
 			}
@@ -751,7 +753,7 @@ static surface render_text(const std::string& text, int fontsize, const SDL_Colo
 			for(std::vector<surface>::const_iterator j = i->begin(),
 					j_end = i->end(); j != j_end; ++j) {
 				SDL_SetAlpha(*j, 0, 0); // direct blit without alpha blending
-				SDL_Rect dstrect = create_rect(xpos, ypos, 0, 0);
+				SDL_Rect dstrect = sdl::create_rect(xpos, ypos, 0, 0);
 				sdl_blit(*j, NULL, res, &dstrect);
 				xpos += (*j)->w;
 				height = std::max<size_t>((*j)->h, height);
@@ -776,11 +778,11 @@ SDL_Rect draw_text_line(surface gui_surface, const SDL_Rect& area, int size,
 {
 	if (gui_surface.null()) {
 		text_surface const &u = text_cache::find(text_surface(text, size, color, style));
-		return create_rect(0, 0, u.width(), u.height());
+		return sdl::create_rect(0, 0, u.width(), u.height());
 	}
 
 	if(area.w == 0) {  // no place to draw
-		return create_rect(0, 0, 0, 0);
+		return sdl::create_rect(0, 0, 0, 0);
 	}
 
 	const std::string etext = make_text_ellipsis(text, size, area.w);
@@ -788,7 +790,7 @@ SDL_Rect draw_text_line(surface gui_surface, const SDL_Rect& area, int size,
 	// for the main current use, we already parsed markup
 	surface surface(render_text(etext,size,color,style,false));
 	if(surface == NULL) {
-		return create_rect(0, 0, 0, 0);
+		return sdl::create_rect(0, 0, 0, 0);
 	}
 
 	SDL_Rect dest;
@@ -885,9 +887,9 @@ std::string make_text_ellipsis(const std::string &text, int font_size,
 
 	std::string current_substring;
 
-	utils::utf8_iterator itor(text);
+	utf8::iterator itor(text);
 
-	for(; itor != utils::utf8_iterator::end(text); ++itor) {
+	for(; itor != utf8::iterator::end(text); ++itor) {
 		std::string tmp = current_substring;
 		tmp.append(itor.substr().first, itor.substr().second);
 
@@ -980,7 +982,7 @@ surface floating_label::create_surface()
 			}
 
 			Uint32 color = SDL_MapRGBA(foreground->format, bgcolor_.r,bgcolor_.g, bgcolor_.b, bgalpha_);
-			sdl_fill_rect(background,NULL, color);
+			sdl::fill_rect(background,NULL, color);
 
 			// we make the text less transparent, because the blitting on the
 			// dark background will darken the anti-aliased part.
@@ -988,7 +990,7 @@ surface floating_label::create_surface()
 			// (where the text was blitted directly on screen)
 			foreground = adjust_surface_alpha(foreground, ftofxp(1.13), false);
 
-			SDL_Rect r = create_rect( border_, border_, 0, 0);
+			SDL_Rect r = sdl::create_rect( border_, border_, 0, 0);
 			SDL_SetAlpha(foreground,SDL_SRCALPHA,SDL_ALPHA_OPAQUE);
 			blit_surface(foreground, NULL, background, &r);
 
@@ -1001,7 +1003,7 @@ surface floating_label::create_surface()
 			// background is blurred shadow of the text
 			surface background = create_neutral_surface
 				(foreground->w + 4, foreground->h + 4);
-			sdl_fill_rect(background, NULL, 0);
+			sdl::fill_rect(background, NULL, 0);
 			SDL_Rect r = { 2, 2, 0, 0 };
 			blit_surface(foreground, NULL, background, &r);
 			background = shadow_image(background, false);
@@ -1043,7 +1045,7 @@ void floating_label::draw(surface screen)
 		return;
 	}
 
-	SDL_Rect rect = create_rect(xpos(surf_->w), ypos_, surf_->w, surf_->h);
+	SDL_Rect rect = sdl::create_rect(xpos(surf_->w), ypos_, surf_->w, surf_->h);
 	const clip_rect_setter clip_setter(screen, &clip_rect_);
 	sdl_blit(screen,&rect,buf_,NULL);
 	sdl_blit(surf_,NULL,screen,&rect);
@@ -1057,7 +1059,7 @@ void floating_label::undraw(surface screen)
 		return;
 	}
 
-	SDL_Rect rect = create_rect(xpos(surf_->w), ypos_, surf_->w, surf_->h);
+	SDL_Rect rect = sdl::create_rect(xpos(surf_->w), ypos_, surf_->w, surf_->h);
 	const clip_rect_setter clip_setter(screen, &clip_rect_);
 	sdl_blit(buf_,NULL,screen,&rect);
 
@@ -1129,16 +1131,20 @@ SDL_Rect get_floating_label_rect(int handle)
 	if(i != labels.end()) {
 		const surface surf = i->second.create_surface();
 		if(surf != NULL) {
-			return create_rect(0, 0, surf->w, surf->h);
+			return sdl::create_rect(0, 0, surf->w, surf->h);
 		}
 	}
 
-	return empty_rect;
+	return sdl::empty_rect;
 }
 
 floating_label_context::floating_label_context()
 {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	surface const screen = NULL;
+#else
 	surface const screen = SDL_GetVideoSurface();
+#endif
 	if(screen != NULL) {
 		draw_floating_labels(screen);
 	}
@@ -1155,7 +1161,11 @@ floating_label_context::~floating_label_context()
 
 	label_contexts.pop();
 
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	surface const screen = NULL;
+#else
 	surface const screen = SDL_GetVideoSurface();
+#endif
 	if(screen != NULL) {
 		undraw_floating_labels(screen);
 	}

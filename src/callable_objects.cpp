@@ -139,19 +139,19 @@ int attack_type_callable::do_compare(const formula_callable* callable) const
 variant unit_callable::get_value(const std::string& key) const
 {
 	if(key == "x") {
-		if (loc_==map_location::null_location) {
+		if (loc_==map_location::null_location()) {
 			return variant();
 		} else {
 			return variant(loc_.x+1);
 		}
 	} else if(key == "y") {
-		if (loc_==map_location::null_location) {
+		if (loc_==map_location::null_location()) {
 			return variant();
 		} else {
 			return variant(loc_.y+1);
 		}
 	} else if(key == "loc") {
-		if (loc_==map_location::null_location) {
+		if (loc_==map_location::null_location()) {
 			return variant();
 		} else {
 			return variant(new location_callable(loc_));
@@ -280,7 +280,7 @@ variant unit_type_callable::get_value(const std::string& key) const
 	} else if(key == "type") {
 		return variant(u_.type_name());
 	} else if(key == "alignment") {
-		return variant(u_.alignment_id(u_.alignment()));
+		return variant(lexical_cast<std::string>(u_.alignment()));
 	} else if(key == "abilities") {
 		std::vector<std::string> abilities = u_.get_ability_list();
 		std::vector<variant> res;

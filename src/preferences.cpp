@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -23,7 +23,8 @@
 
 #include "config.hpp"
 #include "filesystem.hpp"
-#include "hotkeys.hpp"
+#include "game_config.hpp"
+#include "hotkey/hotkey_item.hpp"
 #include "log.hpp"
 #include "preferences.hpp"
 #include "sound.hpp"
@@ -59,7 +60,7 @@ base_manager::base_manager()
 {
 	try{
 #ifdef DEFAULT_PREFS_PATH
-		scoped_istream stream = istream_file(get_default_prefs_file());
+		scoped_istream stream = istream_file(get_default_prefs_file(),false);
 		read(prefs, *stream);
 
 		config user_prefs;
@@ -68,24 +69,26 @@ base_manager::base_manager()
 
 		prefs.merge_with(user_prefs);
 #else
-		scoped_istream stream = istream_file(get_prefs_file());
+		scoped_istream stream = istream_file(get_prefs_file(),false);
 		read(prefs, *stream);
 #endif
 	} catch(const config::error& e) {
 		ERR_CFG << "Error loading preference, message: "
 				<< e.what()
-				<< '\n';
+				<< std::endl;
 	}
 }
 
 base_manager::~base_manager()
 {
-	if (no_preferences_save) return;
+	try {
+		if (no_preferences_save) return;
 
-	// Set the 'hidden' preferences.
-	prefs["scroll_threshold"] = mouse_scroll_threshold();
+		// Set the 'hidden' preferences.
+		prefs["scroll_threshold"] = mouse_scroll_threshold();
 
-	write_preferences();
+		write_preferences();
+	} catch (...) {}
 }
 
 void write_preferences()
@@ -100,7 +103,7 @@ void write_preferences()
 		scoped_ostream prefs_file = ostream_file(get_prefs_file());
 		write(*prefs_file, prefs);
 	} catch(io_exception&) {
-		ERR_FS << "error writing to preferences file '" << get_prefs_file() << "'\n";
+		ERR_FS << "error writing to preferences file '" << get_prefs_file() << "'" << std::endl;
 	}
 
 
@@ -109,7 +112,7 @@ void write_preferences()
     if(!prefs_file_existed) {
 
         if(chmod(get_prefs_file().c_str(), 0600) == -1) {
-			ERR_FS << "error setting permissions of preferences file '" << get_prefs_file() << "'\n";
+			ERR_FS << "error setting permissions of preferences file '" << get_prefs_file() << "'" << std::endl;
         }
 
     }
@@ -185,6 +188,113 @@ bool fullscreen()
 	return get("fullscreen", false);
 }
 
+bool show_allied_orb() {
+	return get("show_ally_orb", game_config::show_ally_orb);
+}
+void set_show_allied_orb(bool show_orb) {
+	prefs["show_ally_orb"] = show_orb;
+}
+
+bool show_enemy_orb() {
+	return get("show_enemy_orb", game_config::show_enemy_orb);
+}
+void set_show_enemy_orb(bool show_orb) {
+	prefs["show_enemy_orb"] = show_orb;
+}
+
+bool show_moved_orb() {
+	return get("show_moved_orb", game_config::show_moved_orb);
+}
+void set_show_moved_orb(bool show_orb) {
+	prefs["show_moved_orb"] = show_orb;
+}
+
+bool show_unmoved_orb() {
+	return get("show_unmoved_orb", game_config::show_unmoved_orb);
+}
+void set_show_unmoved_orb(bool show_orb) {
+	prefs["show_unmoved_orb"] = show_orb;
+}
+
+bool show_partial_orb() {
+	return get("show_partial_orb", game_config::show_partial_orb);
+}
+void set_show_partial_orb(bool show_orb) {
+	prefs["show_partial_orb"] = show_orb;
+}
+
+
+std::string allied_color() {
+	std::string ally_color = get("ally_orb_color");
+	if (ally_color.empty())
+		return game_config::colors::ally_orb_color;
+	return ally_color;
+}
+void set_allied_color(const std::string& color_id) {
+	prefs["ally_orb_color"] = color_id;
+}
+
+std::string wml_tree_root() {
+	std::string wml_tree_root = get("wml_tree_root");
+	if (wml_tree_root.empty())
+		return "_main.cfg";
+	return wml_tree_root;
+}
+void set_wml_tree_root(const std::string& wml_tree_root) {
+	prefs["wml_tree_root"] = wml_tree_root;
+}
+
+std::string core_id() {
+	std::string core_id = get("core");
+	if (core_id.empty())
+		return "default";
+	return core_id;
+}
+void set_core_id(const std::string& core_id) {
+	prefs["core"] = core_id;
+}
+
+std::string enemy_color() {
+	std::string enemy_color = get("enemy_orb_color");
+	if (enemy_color.empty())
+		return game_config::colors::enemy_orb_color;
+	return enemy_color;
+}
+void set_enemy_color(const std::string& color_id) {
+	prefs["enemy_orb_color"] = color_id;
+}
+
+std::string moved_color() {
+	std::string moved_color = get("moved_orb_color");
+	if (moved_color.empty())
+		return game_config::colors::moved_orb_color;
+	return moved_color;
+}
+void set_moved_color(const std::string& color_id) {
+	prefs["moved_orb_color"] = color_id;
+}
+
+std::string unmoved_color() {
+	std::string unmoved_color = get("unmoved_orb_color");
+	if (unmoved_color.empty())
+		return game_config::colors::unmoved_orb_color;
+	return unmoved_color;
+}
+void set_unmoved_color(const std::string& color_id) {
+	prefs["unmoved_orb_color"] = color_id;
+}
+
+std::string partial_color() {
+	std::string partmoved_color = get("partial_orb_color");
+	if (partmoved_color.empty())
+		return game_config::colors::partial_orb_color;
+	return partmoved_color;
+}
+void set_partial_color(const std::string& color_id) {
+	prefs["partial_orb_color"] = color_id;
+}
+
+
 void _set_fullscreen(bool ison)
 {
 	prefs["fullscreen"] = ison;
@@ -225,6 +335,13 @@ std::pair<int,int> resolution()
 	} else {
 		return std::pair<int,int>(1024,768);
 	}
+}
+
+void _set_resolution(const std::pair<int, int>& res)
+{
+	const std::string postfix = fullscreen() ? "resolution" : "windowsize";
+	preferences::set('x' + postfix, lexical_cast<std::string>(res.first));
+	preferences::set('y' + postfix, lexical_cast<std::string>(res.second));
 }
 
 bool turbo()
@@ -676,12 +793,52 @@ bool animate_map()
 
 bool minimap_movement_coding()
 {
-	return preferences::get("minimap_movement_coding", false);
+	return preferences::get("minimap_movement_coding", true);
 }
 
-void toggle_minimap_color_coding()
+void toggle_minimap_movement_coding()
 {
 	set("minimap_movement_coding", !minimap_movement_coding());
+}
+
+bool minimap_terrain_coding()
+{
+	return preferences::get("minimap_terrain_coding", true);
+}
+
+void toggle_minimap_terrain_coding()
+{
+	set("minimap_terrain_coding", !minimap_terrain_coding());
+}
+
+bool minimap_draw_units()
+{
+	return preferences::get("minimap_draw_units", true);
+}
+
+void toggle_minimap_draw_units()
+{
+	set("minimap_draw_units", !minimap_draw_units());
+}
+
+bool minimap_draw_villages()
+{
+	return preferences::get("minimap_draw_villages", true);
+}
+
+void toggle_minimap_draw_villages()
+{
+	set("minimap_draw_villages", !minimap_draw_villages());
+}
+
+bool minimap_draw_terrain()
+{
+	return preferences::get("minimap_draw_terrain", true);
+}
+
+void toggle_minimap_draw_terrain()
+{
+	set("minimap_draw_terrain", !minimap_draw_terrain());
 }
 
 void set_animate_map(bool value)
@@ -782,16 +939,6 @@ bool confirm_load_save_from_different_version()
 bool use_twelve_hour_clock_format()
 {
 	return get("use_twelve_hour_clock_format", false);
-}
-
-bool bzip2_savegame_compression()
-{
-	return get("bzip2_savegame_compression", false);
-}
-
-void set_bzip2_savegame_compression(bool ison)
-{
-	preferences::set("bzip2_savegame_compression", ison);
 }
 
 } // end namespace preferences

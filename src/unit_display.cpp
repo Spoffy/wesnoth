@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -17,8 +17,8 @@
 #include "global.hpp"
 #include "unit_display.hpp"
 
+#include "game_board.hpp"
 #include "game_preferences.hpp"
-#include "game_events.hpp"
 #include "log.hpp"
 #include "mouse_events.hpp"
 #include "resources.hpp"
@@ -152,11 +152,12 @@ namespace unit_display
 /**
  * The path must remain unchanged for the life of this object.
  */
-unit_mover::unit_mover(const std::vector<map_location>& path, bool animate) :
+unit_mover::unit_mover(const std::vector<map_location>& path, bool animate, bool force_scroll) :
 	disp_(game_display::get_singleton()),
 	can_draw_(disp_  &&  !disp_->video().update_locked()  &&
 	          !disp_->video().faked()  &&  path.size() > 1),
 	animate_(animate),
+	force_scroll_(force_scroll),
 	animator_(),
 	wait_until_(INT_MIN),
 	shown_unit_(NULL),
@@ -244,8 +245,14 @@ void unit_mover::update_shown_unit()
 void unit_mover::start(unit& u)
 {
 	// Nothing to do here if there is nothing to animate.
-	if ( !can_draw_  || !animate_ )
+	if ( !can_draw_ )
 		return;
+	// If no animation then hide unit until end of movement
+	if ( !animate_ ) {
+		was_hidden_ = u.get_hidden();
+		u.set_hidden(true);
+		return;
+	}
 
 	// This normally does nothing, but just in case...
 	wait_for_anims();
@@ -308,8 +315,8 @@ void unit_mover::start(unit& u)
  */
 void unit_mover::proceed_to(unit& u, size_t path_index, bool update, bool wait)
 {
-	// Nothing to do here if animations can/should not be shown.
-	if ( !can_draw_  || !animate_ )
+	// Nothing to do here if animations cannot be shown.
+	if ( !can_draw_ || !animate_ )
 		return;
 
 	// Handle pending visibility issues before introducing new ones.
@@ -347,7 +354,7 @@ void unit_mover::proceed_to(unit& u, size_t path_index, bool update, bool wait)
 					temp_unit_ptr_->get_animation()->pause_animation();
 				disp_->scroll_to_tiles(path_.begin() + current_,
 				                       path_.end(), game_display::ONSCREEN,
-				                       true, false, 0.0, false);
+				                       true, false, 0.0, force_scroll_);
 				if ( temp_unit_ptr_->get_animation() )
 					temp_unit_ptr_->get_animation()->restart_animation();
 			}
@@ -388,20 +395,6 @@ void unit_mover::wait_for_anims()
 		animator_.wait_until(wait_until_);
 		// debug code, see unit_frame::redraw()
 		// std::cout << "   end\n";
-
-		/// @todo Are these invalidations really (or still) necessary?
-		/// A quick check suggested they are not needed, but that was
-		/// not comprehensive.
-		if ( disp_ ) { // Should always be true if we get here.
-			// Invalidate the hexes around the move that prompted this wait.
-			map_location arr[6];
-			get_adjacent_tiles(path_[current_-1], arr);
-			for ( unsigned i = 0; i < 6; ++i )
-				disp_->invalidate(arr[i]);
-			get_adjacent_tiles(path_[current_], arr);
-			for ( unsigned i = 0; i < 6; ++i )
-				disp_->invalidate(arr[i]);
-		}
 	}
 
 	// Reset data.
@@ -454,6 +447,11 @@ void unit_mover::finish(unit &u, map_location::DIRECTION dir)
 			mousehandler->invalidate_reachmap();
 		}
 	}
+	else
+	{
+		// Show the unit at end of skipped animation
+		u.set_hidden(was_hidden_);
+	}
 
 	// Facing gets set even when not animating.
 	u.set_facing(dir == map_location::NDIRECTIONS ? final_dir : dir);
@@ -482,9 +480,10 @@ void unit_mover::finish(unit &u, map_location::DIRECTION dir)
  * will still display the correct number of units.
  */
 void move_unit(const std::vector<map_location>& path, unit& u,
-               bool animate, map_location::DIRECTION dir)
+               bool animate, map_location::DIRECTION dir,
+               bool force_scroll)
 {
-	unit_mover mover(path, animate);
+	unit_mover mover(path, animate, force_scroll);
 
 	mover.start(u);
 	mover.proceed_to(u, path.size());
@@ -564,30 +563,29 @@ void unit_die(const map_location& loc, unit& loser,
 }
 
 
-void unit_attack(
+void unit_attack(display * disp, game_board & board,
                  const map_location& a, const map_location& b, int damage,
                  const attack_type& attack, const attack_type* secondary_attack,
 		  int swing,std::string hit_text,int drain_amount,std::string att_text)
 {
-	display* disp = display::get_singleton();
 	if(!disp ||disp->video().update_locked() || disp->video().faked() ||
 			(disp->fogged(a) && disp->fogged(b)) || preferences::show_combat() == false) {
 		return;
 	}
-	unit_map& units = disp->get_units();
-	disp->select_hex(map_location::null_location);
+	//const unit_map& units = disp->get_units();
+	disp->select_hex(map_location::null_location());
 
 	// scroll such that there is at least half a hex spacing around fighters
 	disp->scroll_to_tiles(a,b,game_display::ONSCREEN,true,0.5,false);
 
 	log_scope("unit_attack");
 
-	const unit_map::iterator att = units.find(a);
-	assert(att != units.end());
-	unit& attacker = *att;
+	const unit_map::const_iterator att = board.units().find(a);
+	assert(att.valid());
+	const unit& attacker = *att;
 
-	const unit_map::iterator def = units.find(b);
-	assert(def != units.end());
+	const unit_map::iterator def = board.find_unit(b);
+	assert(def.valid());
 	unit &defender = *def;
 	int def_hitpoints = defender.hitpoints();
 
@@ -626,8 +624,8 @@ void unit_attack(
 	BOOST_FOREACH (const unit_ability & ability, leaders) {
 		if(ability.second == a) continue;
 		if(ability.second == b) continue;
-		unit_map::iterator leader = units.find(ability.second);
-		assert(leader != units.end());
+		unit_map::const_iterator leader = board.units().find(ability.second);
+		assert(leader.valid());
 		leader->set_facing(ability.second.get_relative_dir(a));
 		animator.add_animation(&*leader, "leading", ability.second,
 			att->get_location(), damage, true,  "", 0,
@@ -636,8 +634,8 @@ void unit_attack(
 	BOOST_FOREACH (const unit_ability & ability, helpers) {
 		if(ability.second == a) continue;
 		if(ability.second == b) continue;
-		unit_map::iterator helper = units.find(ability.second);
-		assert(helper != units.end());
+		unit_map::const_iterator helper = board.units().find(ability.second);
+		assert(helper.valid());
 		helper->set_facing(ability.second.get_relative_dir(b));
 		animator.add_animation(&*helper, "resistance", ability.second,
 			def->get_location(), damage, true,  "", 0,
@@ -668,11 +666,11 @@ void unit_attack(
 void reset_helpers(const unit *attacker,const unit *defender)
 {
 	display* disp = display::get_singleton();
-	unit_map& units = disp->get_units();
+	const unit_map& units = disp->get_units();
 	if(attacker) {
 		unit_ability_list leaders = attacker->get_abilities("leadership");
 		BOOST_FOREACH (const unit_ability & ability, leaders) {
-			unit_map::iterator leader = units.find(ability.second);
+			unit_map::const_iterator leader = units.find(ability.second);
 			assert(leader != units.end());
 			leader->set_standing();
 		}
@@ -681,7 +679,7 @@ void reset_helpers(const unit *attacker,const unit *defender)
 	if(defender) {
 		unit_ability_list helpers = defender->get_abilities("resistance");
 		BOOST_FOREACH (const unit_ability & ability, helpers) {
-			unit_map::iterator helper = units.find(ability.second);
+			unit_map::const_iterator helper = units.find(ability.second);
 			assert(helper != units.end());
 			helper->set_standing();
 		}
@@ -692,13 +690,13 @@ void unit_recruited(const map_location& loc,const map_location& leader_loc)
 {
 	game_display* disp = game_display::get_singleton();
 	if(!disp || disp->video().update_locked() || disp->video().faked() ||disp->fogged(loc)) return;
-	unit_map::iterator u = disp->get_units().find(loc);
+	unit_map::const_iterator u = disp->get_units().find(loc);
 	if(u == disp->get_units().end()) return;
 	u->set_hidden(true);
 
 	unit_animator animator;
-	if(leader_loc != map_location::null_location) {
-		unit_map::iterator leader = disp->get_units().find(leader_loc);
+	if(leader_loc != map_location::null_location()) {
+		unit_map::const_iterator leader = disp->get_units().find(leader_loc);
 		if(leader == disp->get_units().end()) return;
 		disp->scroll_to_tiles(loc,leader_loc,game_display::ONSCREEN,true,0.0,false);
 		leader->set_facing(leader_loc.get_relative_dir(loc));
@@ -736,17 +734,17 @@ void unit_healing(unit &healed, const std::vector<unit *> &healers, int healing,
 
 	if (healing < 0) {
 		animator.add_animation(&healed, "poisoned", healed_loc,
-		                       map_location::null_location, -healing, false,
+		                       map_location::null_location(), -healing, false,
 		                       number_and_text(-healing, extra_text),
 		                       display::rgb(255,0,0));
 	} else if ( healing > 0 ) {
 		animator.add_animation(&healed, "healed", healed_loc,
-		                       map_location::null_location, healing, false,
+		                       map_location::null_location(), healing, false,
 		                       number_and_text(healing, extra_text),
 		                       display::rgb(0,255,0));
 	} else {
 		animator.add_animation(&healed, "healed", healed_loc,
-		                       map_location::null_location, 0, false,
+		                       map_location::null_location(), 0, false,
 		                       extra_text, display::rgb(0,255,0));
 	}
 	animator.start_animations();
@@ -754,7 +752,7 @@ void unit_healing(unit &healed, const std::vector<unit *> &healers, int healing,
 	animator.set_all_standing();
 }
 
-void wml_animation_internal(unit_animator &animator, const vconfig &cfg, const map_location &default_location = map_location::null_location);
+void wml_animation_internal(unit_animator &animator, const vconfig &cfg, const map_location &default_location = map_location::null_location());
 
 void wml_animation(const vconfig &cfg, const map_location &default_location)
 {
@@ -776,7 +774,7 @@ void wml_animation_internal(unit_animator &animator, const vconfig &cfg, const m
 	vconfig filter = cfg.child("filter");
 	if(!filter.null()) {
 		for (u = resources::units->begin(); u != resources::units->end(); ++u) {
-			if (game_events::unit_matches_filter(*u, filter))
+			if ( u->matches_filter(filter) )
 				break;
 		}
 	}
@@ -827,7 +825,7 @@ void wml_animation_internal(unit_animator &animator, const vconfig &cfg, const m
 		}
 		resources::screen->scroll_to_tile(u->get_location(), game_display::ONSCREEN, true, false);
 		vconfig t_filter = cfg.child("facing");
-		map_location secondary_loc = map_location::null_location;
+		map_location secondary_loc = map_location::null_location();
 		if(!t_filter.empty()) {
 			terrain_filter filter(t_filter, *resources::units);
 			std::set<map_location> locs;

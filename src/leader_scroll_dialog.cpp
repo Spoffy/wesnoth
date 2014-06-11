@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -59,7 +59,7 @@ void status_table(display& gui, int selected)
 	items.push_back(heading.str());
 
 	const gamemap& map = gui.get_map();
-	const unit_map& units = gui.get_const_units();
+	const unit_map& units = gui.get_units();
 	assert(&gui.get_teams() == resources::teams);
 	const std::vector<team>& teams = gui.get_teams();
 
@@ -104,7 +104,7 @@ void status_table(display& gui, int selected)
 				leader_bools.push_back(false);
 				leader_name = "Unknown";
 			}
-	//	if (gamestate_.classification().campaign_type == "multiplayer")
+	//	if (gamestate_.classification().campaign_type == game_classification::MULTIPLAYER)
 	//			leader_name = teams[n].current_player();
 
 #ifndef LOW_MEM
@@ -201,7 +201,7 @@ void scenario_settings_table(display& gui, int selected)
 	items.push_back(heading.str());
 
 	//const gamemap& map = gui.get_map();
-	const unit_map& units = gui.get_const_units();
+	const unit_map& units = gui.get_units();
 	const std::vector<team>& teams = gui.get_teams();
 
 	const team& viewing_team = teams[gui.viewing_team()];

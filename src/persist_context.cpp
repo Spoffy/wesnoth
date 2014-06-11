@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2010 - 2013 by Jody Northup
+   Copyright (C) 2010 - 2014 by Jody Northup
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -42,7 +42,7 @@ void persist_file_context::load()
 			try {
 				read(cfg_,*file_stream);
 			} catch (config::error &err) {
-				LOG_PERSIST << err.message;
+				LOG_PERSIST << err.message << std::endl;
 			}
 		}
 	}
@@ -141,6 +141,9 @@ bool persist_file_context::clear_var(const std::string &global, bool immediate)
 	while ((active->empty()) && (!namespace_.lineage_.empty())) {
 		name_space prev = namespace_.prev();
 		active = get_node(cfg_, prev);
+		/// @todo: This assertion replaces a seg fault. Still need to fix the
+		/// real bug (documented as bug #21093).
+		assert(active != NULL);
 		active->clear_children(namespace_.node_);
 		if (active->has_child("variables") && active->child("variables").empty()) {
 			active->clear_children("variables");
@@ -185,7 +188,7 @@ bool persist_file_context::save_context() {
 					writer.write(cfg_);
 					success = true;
 				} catch(config::error &err) {
-					LOG_PERSIST << err.message;
+					LOG_PERSIST << err.message << std::endl;
 					success = false;
 				}
 			}

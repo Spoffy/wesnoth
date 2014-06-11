@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Yurii Chernyi <terraninfo@terraninfo.net>
+   Copyright (C) 2009 - 2014 by Yurii Chernyi <terraninfo@terraninfo.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,7 @@
 #include "manager.hpp"
 #include "formula/ai.hpp"
 #include "registry.hpp"
-#include "../game_events.hpp"
+#include "../game_events/pump.hpp"
 #include "../log.hpp"
 #include "../serialization/string_utils.hpp"
 #include "composite/component.hpp"
@@ -108,9 +108,11 @@ void holder::init( side_number side )
 
 holder::~holder()
 {
+	try {
 	if (this->ai_) {
 		LOG_AI_MANAGER << describe_ai() << "Managed AI will be deleted" << std::endl;
 	}
+	} catch (...) {}
 	delete this->default_ai_context_;
 	delete this->readwrite_context_;
 	delete this->readonly_context_;
@@ -245,16 +247,16 @@ const std::string holder::get_ai_overview()
 	s << "number_of_possible_recruits_to_force_recruit:  " << this->ai_->get_number_of_possible_recruits_to_force_recruit() << std::endl;
 	s << "passive_leader:  " << this->ai_->get_passive_leader() << std::endl;
 	s << "passive_leader_shares_keep:  " << this->ai_->get_passive_leader_shares_keep() << std::endl;
+	s << "recruitment_diversity:  " << this->ai_->get_recruitment_diversity() << std::endl;
 	s << "recruitment_ignore_bad_combat:  " << this->ai_->get_recruitment_ignore_bad_combat() << std::endl;
 	s << "recruitment_ignore_bad_movement:  " << this->ai_->get_recruitment_ignore_bad_movement() << std::endl;
-//	s << "recruitment_pattern:  ";
-//	for(std::vector<std::string>::const_iterator i =  this->ai_->get_recruitment_pattern().begin(); i !=  this->ai_->get_recruitment_pattern().end(); ++i) {
-//		if(i != this->ai_->get_recruitment_pattern().begin())
-//			s << ",";
-//
-//		s << *i;
-//	}
-//	s << std::endl;
+	s << "recruitment_instructions:  " << std::endl << "----config begin----" << std::endl;
+	s << this->ai_->get_recruitment_instructions() << "-----config end-----" << std::endl;
+	s << "recruitment_more:  " << utils::join(this->ai_->get_recruitment_more()) << std::endl;
+	s << "recruitment_pattern:  " << utils::join(this->ai_->get_recruitment_pattern()) << std::endl;
+	s << "recruitment_randomness:  " << this->ai_->get_recruitment_randomness() << std::endl;
+	s << "recruitment_save_gold:  " << std::endl << "----config begin----" << std::endl;
+	s << this->ai_->get_recruitment_save_gold() << "-----config end-----" << std::endl;
 	s << "scout_village_targeting:  " << this->ai_->get_scout_village_targeting() << std::endl;
 	s << "simple_targeting:  " << this->ai_->get_simple_targeting() << std::endl;
 	s << "support_villages:  " << this->ai_->get_support_villages() << std::endl;

@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2003 - 2013 by David White <dave@whitevine.net>
+   Copyright (C) 2003 - 2014 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -14,12 +14,18 @@
 #ifndef UNIT_TYPES_H_INCLUDED
 #define UNIT_TYPES_H_INCLUDED
 
+#include "gettext.hpp"
+#include "make_enum.hpp"
 #include "map_location.hpp"
 #include "movetype.hpp"
 #include "race.hpp"
 #include "util.hpp"
 
 #include <boost/noncopyable.hpp>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
 
 struct tportrait;
 class unit_ability_list;
@@ -43,6 +49,8 @@ public:
 	const std::string& type() const { return type_; }
 	const std::string& icon() const { return icon_; }
 	const std::string& range() const { return range_; }
+	int min_range() const { return min_range_; }
+	int max_range() const { return max_range_; }
 	std::string accuracy_parry_description() const;
 	int accuracy() const { return accuracy_; }
 	int parry() const { return parry_; }
@@ -97,6 +105,7 @@ private:
 	std::string type_;
 	std::string icon_;
 	std::string range_;
+	int min_range_, max_range_;
 	int damage_;
 	int num_attacks_;
 	double attack_weight_;
@@ -123,12 +132,13 @@ public:
 
 	/// Records the status of the lazy building of unit types.
 	/// These are in order of increasing levels of being built.
-	enum BUILD_STATUS {NOT_BUILT, CREATED, VARIATIONS, HELP_INDEX, WITHOUT_ANIMATIONS, FULL};
+	/// HELP_INDEX is already defined in a windows header under some conditions.
+	enum BUILD_STATUS {NOT_BUILT, CREATED, VARIATIONS, HELP_INDEXED , WITHOUT_ANIMATIONS, FULL};
 private: // These will be called by build().
 	/// Load data into an empty unit_type (build to FULL).
 	void build_full(const movement_type_map &movement_types,
 		const race_map &races, const config::const_child_itors &traits);
-	/// Partially load data into an empty unit_type (build to HELP_INDEX).
+	/// Partially load data into an empty unit_type (build to HELP_INDEXED).
 	void build_help_index(const movement_type_map &movement_types,
 		const race_map &races, const config::const_child_itors &traits);
 	/// Load the most needed data into an empty unit_type (build to CREATE).
@@ -163,7 +173,7 @@ public:
 
 	const unit_type& get_gender_unit_type(std::string gender) const;
 	const unit_type& get_gender_unit_type(unit_race::GENDER gender) const;
-	const unit_type& get_variation(const std::string& name) const;
+	const unit_type& get_variation(const std::string& id) const;
 	/** Info on the type of unit that the unit reanimates as. */
 	const std::string& undead_variation() const { return undead_variation_; }
 
@@ -182,7 +192,10 @@ public:
 	// translation engine upon changing the language in the same session.
 	t_string unit_description() const;
 	int hitpoints() const { return hitpoints_; }
+	double hp_bar_scaling() const { return hp_bar_scaling_; }
+	double xp_bar_scaling() const { return xp_bar_scaling_; }
 	int level() const { return level_; }
+	int recall_cost() const { return recall_cost_;}
 	int movement() const { return movement_; }
 	int vision() const { return vision_ < 0 ? movement() : vision_; }
 	/// If @a base_value is set to true, do not fall back to movement().
@@ -190,6 +203,8 @@ public:
 	int jamming() const {return jamming_; }
 	int max_attacks() const { return max_attacks_; }
 	int cost() const { return cost_; }
+	const std::string& default_variation() const { return default_variation_; }
+	const std::string& variation_name() const { return variation_name_; }
 	const std::string& usage() const { return usage_; }
 	const std::string& image() const { return image_; }
 	const std::string& icon() const { return icon_; }
@@ -213,11 +228,32 @@ public:
 		int old_value_;
 	};
 
-	enum ALIGNMENT { LAWFUL, NEUTRAL, CHAOTIC, LIMINAL };
+	//enum ALIGNMENT { LAWFUL, NEUTRAL, CHAOTIC, LIMINAL };
+	MAKE_ENUM (ALIGNMENT,
+		(LAWFUL, N_("lawful"))
+		(NEUTRAL, N_("neutral"))
+		(CHAOTIC, N_("chaotic"))
+		(LIMINAL, N_("liminal"))
+	)
+	MAKE_ENUM (ALIGNMENT_FEMALE_VARIATION,
+		(FEMALE_LAWFUL, N_("female^lawful"))
+		(FEMALE_NEUTRAL, N_("female^neutral"))
+		(FEMALE_CHAOTIC, N_("female^chaotic"))
+		(FEMALE_LIMINAL, N_("female^liminal"))
+	)
 
 	ALIGNMENT alignment() const { return alignment_; }
-	static const char* alignment_description(ALIGNMENT align, unit_race::GENDER gender = unit_race::MALE);
-	static const char* alignment_id(ALIGNMENT align);
+	inline static std::string alignment_description(ALIGNMENT align, unit_race::GENDER gender = unit_race::MALE)
+	{
+		std::string str = std::string();
+		if (gender == unit_race::FEMALE) {
+			ALIGNMENT_FEMALE_VARIATION fem = static_cast<ALIGNMENT_FEMALE_VARIATION> (align);
+			str = lexical_cast<std::string>(fem);
+		} else {
+			str = lexical_cast<std::string>(align);
+		}
+		return sgettext(str.c_str());
+	}
 
 	fixed_t alpha() const { return alpha_; }
 
@@ -242,16 +278,23 @@ public:
 	bool has_random_traits() const;
 
 	/// The returned vector will not be empty, provided this has been built
-	/// to the HELP_INDEX status.
+	/// to the HELP_INDEXED status.
 	const std::vector<unit_race::GENDER>& genders() const { return genders_; }
 	std::vector<std::string> variations() const;
+
+	/**
+	 * @param variation_id		The id of the variation we search for.
+	 * @return					Iff one of the type's variations' (or the sibling's if the unit_type is a variation itself) id matches @variation_id.
+	 */
+	bool has_variation(const std::string& variation_id) const;
 
 	/// Returns the ID of this type's race without the need to build the type.
 	std::string race_id() const { return cfg_["race"]; } //race_->id(); }
 	/// Never returns NULL, but may point to the null race.
-	/// Requires building to the HELP_INDEX status to get the correct race.
+	/// Requires building to the HELP_INDEXED status to get the correct race.
 	const unit_race* race() const { return race_; }
 	bool hide_help() const;
+	bool do_not_list() const { return do_not_list_; }
 
 	const std::vector<tportrait>& portraits() const { return portraits_; }
 
@@ -259,9 +302,17 @@ public:
 	/// Returns a trimmed config suitable for use with units.
 	const config & get_cfg_for_units() const
 	{ return built_unit_cfg_ ? unit_cfg_ : build_unit_cfg(); }
+
+	/// Gets resistance while considering custom WML abilities.
+	/// Attention: Filters in resistance-abilities will be ignored.
+	int resistance_against(const std::string& damage_name, bool attacker) const;
+
 private:
 	/// Generates (and returns) a trimmed config suitable for use with units.
 	const config & build_unit_cfg() const;
+
+	/// Identical to unit::resistance_filter_matches.
+	bool resistance_filter_matches(const config& cfg,bool attacker,const std::string& damage_name, int res) const;
 
 private:
 	void operator=(const unit_type& o);
@@ -276,7 +327,9 @@ private:
 	t_string type_name_;
 	t_string description_;
 	int hitpoints_;
+	double hp_bar_scaling_, xp_bar_scaling_;
 	int level_;
+	int recall_cost_;
 	int movement_;
 	int vision_;
 	int jamming_;
@@ -297,6 +350,8 @@ private:
 
 	typedef std::map<std::string,unit_type*> variations_map;
 	variations_map variations_;
+	std::string default_variation_;
+	std::string variation_name_;
 
 	const unit_race* race_;	/// Never NULL, but may point to the null race.
 
@@ -305,7 +360,7 @@ private:
 	std::vector<t_string> abilities_, adv_abilities_;
 	std::vector<t_string> ability_tooltips_, adv_ability_tooltips_;
 
-	bool zoc_, hide_help_;
+	bool zoc_, hide_help_, do_not_list_;
 
 	std::vector<std::string> advances_to_;
 	int experience_needed_;
@@ -328,6 +383,9 @@ private:
 	/** List with the portraits available for the unit. */
 	std::vector<tportrait> portraits_;
 };
+
+MAKE_ENUM_STREAM_OPS2(unit_type, ALIGNMENT)
+MAKE_ENUM_STREAM_OPS2(unit_type, ALIGNMENT_FEMALE_VARIATION)
 
 class unit_type_data
 	: private boost::noncopyable

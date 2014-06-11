@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2011 - 2013 by Lukasz Dobrogowski <lukasz.dobrogowski@gmail.com>
+   Copyright (C) 2011 - 2014 by Lukasz Dobrogowski <lukasz.dobrogowski@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -30,9 +30,8 @@ BOOST_AUTO_TEST_CASE (test_empty_options)
 	BOOST_CHECK(!co.campaign_difficulty);
 	BOOST_CHECK(!co.campaign_scenario);
 	BOOST_CHECK(!co.clock);
-	BOOST_CHECK(!co.config_path);
-	BOOST_CHECK(!co.config_dir);
 	BOOST_CHECK(!co.data_dir);
+	BOOST_CHECK(!co.data_path);
 	BOOST_CHECK(!co.debug);
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
 	BOOST_CHECK(!co.debug_dot_domain);
@@ -64,7 +63,6 @@ BOOST_AUTO_TEST_CASE (test_empty_options)
 	BOOST_CHECK(!co.nogui);
 	BOOST_CHECK(!co.nomusic);
 	BOOST_CHECK(!co.nosound);
-	BOOST_CHECK(!co.new_storyscreens);
 	BOOST_CHECK(!co.new_widgets);
 	BOOST_CHECK(!co.path);
 	BOOST_CHECK(!co.preprocess);
@@ -86,6 +84,10 @@ BOOST_AUTO_TEST_CASE (test_empty_options)
 	BOOST_CHECK(!co.screenshot_map_file);
 	BOOST_CHECK(!co.screenshot_output_file);
 	BOOST_CHECK(!co.test);
+	BOOST_CHECK(!co.userconfig_dir);
+	BOOST_CHECK(!co.userconfig_path);
+	BOOST_CHECK(!co.userdata_dir);
+	BOOST_CHECK(!co.userdata_path);
 	BOOST_CHECK(!co.validcache);
 	BOOST_CHECK(!co.version);
 	BOOST_CHECK(!co.windowed);
@@ -112,9 +114,8 @@ BOOST_AUTO_TEST_CASE (test_default_options)
 	BOOST_CHECK(!co.campaign_difficulty);
 	BOOST_CHECK(!co.campaign_scenario);
 	BOOST_CHECK(!co.clock);
-	BOOST_CHECK(!co.config_path);
-	BOOST_CHECK(!co.config_dir);
 	BOOST_CHECK(!co.data_dir);
+	BOOST_CHECK(!co.data_path);
 	BOOST_CHECK(!co.debug);
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
 	BOOST_CHECK(!co.debug_dot_domain);
@@ -147,7 +148,6 @@ BOOST_AUTO_TEST_CASE (test_default_options)
 	BOOST_CHECK(!co.nogui);
 	BOOST_CHECK(!co.nomusic);
 	BOOST_CHECK(!co.nosound);
-	BOOST_CHECK(!co.new_storyscreens);
 	BOOST_CHECK(!co.new_widgets);
 	BOOST_CHECK(!co.path);
 	BOOST_CHECK(!co.preprocess);
@@ -168,6 +168,10 @@ BOOST_AUTO_TEST_CASE (test_default_options)
 	BOOST_CHECK(!co.screenshot_map_file);
 	BOOST_CHECK(!co.screenshot_output_file);
 	BOOST_CHECK(co.test && co.test->empty());
+	BOOST_CHECK(!co.userconfig_dir);
+	BOOST_CHECK(!co.userconfig_path);
+	BOOST_CHECK(!co.userdata_dir);
+	BOOST_CHECK(!co.userdata_path);
 	BOOST_CHECK(!co.validcache);
 	BOOST_CHECK(!co.version);
 	BOOST_CHECK(!co.windowed);
@@ -188,11 +192,10 @@ BOOST_AUTO_TEST_CASE (test_full_options)
 		"--campaign-difficulty=16",
 		"--campaign-scenario=scenfoo",
 		"--clock",
-		"--config-dir=configdirfoo",
-		"--config-path",
 		"--controller=5:confoo",
 		"--controller=6:conbar",
 		"--data-dir=datadirfoo",
+		"--data-path",
 		"--debug",
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
 		"--debug-dot-domain=ddfoo",
@@ -216,7 +219,6 @@ BOOST_AUTO_TEST_CASE (test_full_options)
 		"--logdomains=filterfoo",
 		"--max-fps=100",
 		"--multiplayer",
-		"--new-storyscreens",
 		"--new-widgets",
 		"--nocache",
 		"--nodelay",
@@ -244,6 +246,10 @@ BOOST_AUTO_TEST_CASE (test_full_options)
 		"--server=servfoo",
 		"--test=testfoo",
 		"--turns=42",
+		"--userconfig-dir=userconfigdirfoo",
+		"--userconfig-path",
+		"--userdata-dir=userdatadirfoo",
+		"--userdata-path",
 		"--validcache",
 		"--version",
 		"--windowed",
@@ -257,9 +263,8 @@ BOOST_AUTO_TEST_CASE (test_full_options)
 	BOOST_CHECK(co.campaign_difficulty && *co.campaign_difficulty == 16);
 	BOOST_CHECK(co.campaign_scenario && *co.campaign_scenario == "scenfoo");
 	BOOST_CHECK(co.clock);
-	BOOST_CHECK(co.config_path);
-	BOOST_CHECK(co.config_dir && *co.config_dir == "configdirfoo");
 	BOOST_CHECK(co.data_dir && *co.data_dir == "datadirfoo");
+	BOOST_CHECK(co.data_path);
 	BOOST_CHECK(co.debug);
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
 	BOOST_CHECK(co.debug_dot_domain && *co.debug_dot_domain == "ddfoo");
@@ -313,7 +318,6 @@ BOOST_AUTO_TEST_CASE (test_full_options)
 	BOOST_CHECK(co.nogui);
 	BOOST_CHECK(co.nomusic);
 	BOOST_CHECK(co.nosound);
-	BOOST_CHECK(co.new_storyscreens);
 	BOOST_CHECK(co.new_widgets);
 	BOOST_CHECK(co.path);
 	BOOST_CHECK(co.preprocess && co.preprocess_path && co.preprocess_target);
@@ -334,6 +338,10 @@ BOOST_AUTO_TEST_CASE (test_full_options)
 	BOOST_CHECK(co.screenshot && co.screenshot_map_file && co.screenshot_output_file);
 	BOOST_CHECK(*co.screenshot_map_file == "mapfoo" && *co.screenshot_output_file == "outssfoo");
 	BOOST_CHECK(co.test && *co.test == "testfoo");
+	BOOST_CHECK(co.userconfig_dir && *co.userconfig_dir == "userconfigdirfoo");
+	BOOST_CHECK(co.userconfig_path);
+	BOOST_CHECK(co.userdata_dir && *co.userdata_dir == "userdatadirfoo");
+	BOOST_CHECK(co.userdata_path);
 	BOOST_CHECK(co.validcache);
 	BOOST_CHECK(co.version);
 	BOOST_CHECK(co.windowed);
@@ -355,9 +363,8 @@ BOOST_AUTO_TEST_CASE (test_positional_options)
 	BOOST_CHECK(!co.campaign_difficulty);
 	BOOST_CHECK(!co.campaign_scenario);
 	BOOST_CHECK(!co.clock);
-	BOOST_CHECK(!co.config_path);
-	BOOST_CHECK(!co.config_dir);
 	BOOST_CHECK(co.data_dir && *co.data_dir == "datadirfoo");
+	BOOST_CHECK(!co.data_path);
 	BOOST_CHECK(!co.debug);
 #ifdef DEBUG_WINDOW_LAYOUT_GRAPHS
 	BOOST_CHECK(!co.debug_dot_domain);
@@ -390,7 +397,6 @@ BOOST_AUTO_TEST_CASE (test_positional_options)
 	BOOST_CHECK(!co.nogui);
 	BOOST_CHECK(!co.nomusic);
 	BOOST_CHECK(!co.nosound);
-	BOOST_CHECK(!co.new_storyscreens);
 	BOOST_CHECK(!co.new_widgets);
 	BOOST_CHECK(!co.path);
 	BOOST_CHECK(!co.preprocess);
@@ -411,6 +417,10 @@ BOOST_AUTO_TEST_CASE (test_positional_options)
 	BOOST_CHECK(!co.screenshot_map_file);
 	BOOST_CHECK(!co.screenshot_output_file);
 	BOOST_CHECK(!co.test);
+	BOOST_CHECK(!co.userconfig_dir);
+	BOOST_CHECK(!co.userconfig_path);
+	BOOST_CHECK(!co.userdata_dir);
+	BOOST_CHECK(!co.userdata_path);
 	BOOST_CHECK(!co.validcache);
 	BOOST_CHECK(!co.version);
 	BOOST_CHECK(!co.windowed);

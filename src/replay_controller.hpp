@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2006 - 2013 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
+   Copyright (C) 2006 - 2014 by Joerg Hinrichs <joerg.hinrichs@alice-dsl.de>
    wesnoth playlevel Copyright (C) 2003 by David White <dave@whitevine.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
@@ -18,6 +18,7 @@
 
 #include "game_end_exceptions.hpp"
 #include "gamestatus.hpp"
+#include "saved_game.hpp"
 #include "play_controller.hpp"
 
 #include <vector>
@@ -27,20 +28,20 @@ class video;
 class replay_controller : public play_controller
 {
 public:
-	replay_controller(const config& level, game_state& state_of_game,
-		const int ticks, const int num_turns, const config& game_config, CVideo& video);
+	replay_controller(const config& level, saved_game& state_of_game,
+		const int ticks, const config& game_config, CVideo& video);
 	virtual ~replay_controller();
 
-	virtual bool can_execute_command(hotkey::HOTKEY_COMMAND command, int index=-1) const;
+	virtual bool can_execute_command(const hotkey::hotkey_command& command, int index=-1) const;
 
 	//event handlers
 	virtual void preferences();
 	virtual void show_statistics();
-	void play_replay();
+	possible_end_play_signal play_replay();
 	void reset_replay();
 	void stop_replay();
-	void replay_next_turn();
-	void replay_next_side();
+	possible_end_play_signal replay_next_turn();
+	possible_end_play_signal replay_next_side();
 	void process_oos(const std::string& msg) const;
 	void replay_show_everything();
 	void replay_show_each();
@@ -50,21 +51,24 @@ public:
 	virtual void force_end_turn() {}
 	virtual void force_end_level(LEVEL_RESULT) {}
 	virtual void check_end_level() {}
+	virtual void on_not_observer() {}
 
-	std::vector<team> teams_start_;
+	possible_end_play_signal try_run_to_completion();
 
 protected:
 	virtual void init_gui();
 
 private:
 	void init();
-	virtual void play_turn();
-	virtual void play_side(const unsigned int team_index, bool save);
+	possible_end_play_signal play_turn();
+	possible_end_play_signal play_side();
 	void update_teams();
 	void update_gui();
 	void init_replay_display();
 	void rebuild_replay_theme();
 	void handle_generic_event(const std::string& /*name*/);
+
+	possible_end_play_signal play_replay_main_loop();
 
 	void reset_replay_ui();
 	void update_replay_ui();
@@ -83,8 +87,8 @@ private:
 		       play_turn_button() && play_side_button();
 	}
 
-	game_state gamestate_start_;
-	unit_map units_start_;
+	saved_game gamestate_start_;
+	game_board gameboard_start_;
 	tod_manager tod_manager_start_;
 
 	unsigned int current_turn_;
@@ -95,8 +99,7 @@ private:
 };
 
 
-LEVEL_RESULT play_replay_level(const config& terrain_config,
-		const config* level, CVideo& video,
-		game_state& state_of_game);
+LEVEL_RESULT play_replay_level(const config& terrain_config, CVideo& video,
+		saved_game& state_of_game, bool is_unit_test = false);
 
 #endif

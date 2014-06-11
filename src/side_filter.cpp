@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2010 - 2013 by Yurii Chernyi <terraninfo@terraninfo.net>
+   Copyright (C) 2010 - 2014 by Yurii Chernyi <terraninfo@terraninfo.net>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -177,11 +177,10 @@ bool side_filter::match_internal(const team &t) const
 	if (!cfg_controller.blank())
 	{
 		if (network::nconnections() > 0)
-			ERR_NG << "ignoring controller= in SSF due to danger of OOS errors\n";
+			ERR_NG << "ignoring controller= in SSF due to danger of OOS errors" << std::endl;
 		else
 		{
-			const std::string& controller = cfg_controller;
-			if(strcmp(controller.c_str(), t.controller_string()) != 0)
+			if(cfg_controller.str() != team::CONTROLLER_to_string (t.controller()))
 				return false;
 		}
 	}

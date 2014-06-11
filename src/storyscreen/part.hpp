@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2009 - 2013 by Ignacio R. Morelle <shadowm2006@gmail.com>
+   Copyright (C) 2009 - 2014 by Ignacio R. Morelle <shadowm2006@gmail.com>
    Part of the Battle for Wesnoth Project http://www.wesnoth.org/
 
    This program is free software; you can redistribute it and/or modify
@@ -24,12 +24,11 @@
 #include <utility>
 #include <vector>
 
-#include "sdl_utils.hpp"
+#include "sdl/utils.hpp"
 
 class config;
 class vconfig;
 class display;
-class game_state;
 
 namespace storyscreen {
 
@@ -329,7 +328,7 @@ public:
 	const std::vector<background_layer>& get_background_layers() const {
 		return background_layers_;
 	}
-	
+
 private:
 	/** Takes care of initializing and branching properties. */
 	void resolve_wml(const vconfig &cfg);
