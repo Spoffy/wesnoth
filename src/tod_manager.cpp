@@ -13,18 +13,18 @@
  */
 
 #include "tod_manager.hpp"
-#include "wml_exception.hpp"
-#include "gettext.hpp"
+
 #include "display_context.hpp"
 #include "formula_string_utils.hpp"
 #include "gamestatus.hpp"
+#include "gettext.hpp"
 #include "log.hpp"
 #include "map.hpp"
 #include "play_controller.hpp"
 #include "random_new.hpp"
-#include "resources.hpp"
 #include "unit.hpp"
 #include "unit_abilities.hpp"
+#include "wml_exception.hpp"
 
 #include <boost/foreach.hpp>
 #include <boost/range/adaptors.hpp>
@@ -193,11 +193,8 @@ const time_of_day& tod_manager::get_time_of_day(const map_location& loc, int n_t
 	return get_time_of_day_turn(times_, n_turn, currentTime_);
 }
 
-const time_of_day tod_manager::get_illuminated_time_of_day(const map_location& loc, int for_turn) const
+const time_of_day tod_manager::get_illuminated_time_of_day(const unit_map & units, const gamemap & map, const map_location& loc, int for_turn) const
 {
-	const gamemap& map = resources::disp_context->map();
-	const unit_map& units = *resources::units;
-
 	// get ToD ignoring illumination
 	time_of_day tod = get_time_of_day(loc, for_turn);
 
@@ -319,7 +316,7 @@ const std::set<map_location>& tod_manager::get_area_by_index(int index) const
 	return areas_[index].hexes;
 }
 
-void tod_manager::add_time_area(const config& cfg)
+void tod_manager::add_time_area(const gamemap & map, const config& cfg)
 {
 	areas_.push_back(area_time_of_day());
 	area_time_of_day &area = areas_.back();
@@ -327,7 +324,7 @@ void tod_manager::add_time_area(const config& cfg)
 	area.xsrc = cfg["x"].str();
 	area.ysrc = cfg["y"].str();
 	area.currentTime = cfg["current_time"].to_int(0);
-	std::vector<map_location> const& locs (parse_location_range(area.xsrc, area.ysrc, true));
+	std::vector<map_location> const& locs (map.parse_location_range(area.xsrc, area.ysrc, true));
 	area.hexes.insert(locs.begin(), locs.end());
 	time_of_day::parse_times(cfg, area.times);
 }
@@ -381,7 +378,7 @@ void tod_manager::set_number_of_turns(int num)
 	num_turns_ = std::max<int>(num, -1);
 }
 
-void tod_manager::set_turn(const int num, const bool increase_limit_if_needed)
+void tod_manager::set_turn(const int num, boost::optional<game_data &> vars, const bool increase_limit_if_needed)
 {
 	const int new_turn = std::max<int>(num, 1);
 	LOG_NG << "changing current turn number from " << turn_ << " to " << new_turn << '\n';
@@ -392,8 +389,8 @@ void tod_manager::set_turn(const int num, const bool increase_limit_if_needed)
 		set_number_of_turns(new_turn);
 	}
 	turn_ = new_turn;
-	if (resources::gamedata)
-		resources::gamedata->get_variable("turn_number") = new_turn;
+	if (vars)
+		vars->get_variable("turn_number") = new_turn;
 }
 
 void tod_manager::set_new_current_times(const int new_current_turn_number)
@@ -421,9 +418,9 @@ int tod_manager::calculate_current_time(
 	return new_current_time;
 }
 
-bool tod_manager::next_turn()
+bool tod_manager::next_turn(boost::optional<game_data&> vars)
 {
-	set_turn(turn_ + 1, false);
+	set_turn(turn_ + 1, vars, false);
 	return is_time_left();
 }
 

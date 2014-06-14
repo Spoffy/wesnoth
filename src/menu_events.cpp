@@ -2996,6 +2996,7 @@ void console_handler::do_choose_level() {
 		e.transient.carryover_report = false;
 		e.prescenario_save = true;
 		e.transient.linger_mode = false;
+		e.proceed_to_next_level = true;
 		throw end_level_exception(VICTORY);
 	}
 }
@@ -3007,7 +3008,7 @@ void console_handler::do_turn()
 	if (!data.empty()) {
 		turn = lexical_cast_default<int>(data, 1);
 	}
-	resources::tod_manager->set_turn(turn);
+	resources::tod_manager->set_turn(turn, *resources::gamedata);
 
 	menu_handler_.gui_->new_turn();
 	menu_handler_.gui_->redraw_everything();

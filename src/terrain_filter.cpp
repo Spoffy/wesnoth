@@ -242,7 +242,7 @@ bool terrain_filter::match_internal(const map_location& loc, const bool ignore_x
 		if(flat_) {
 			tod = resources::tod_manager->get_time_of_day(loc);
 		} else {
-			tod = resources::tod_manager->get_illuminated_time_of_day(loc);
+			tod = resources::tod_manager->get_illuminated_time_of_day(resources::gameboard->units(), resources::gameboard->map(),loc);
 		}
 
 		if(!tod_type.empty()) {
@@ -404,7 +404,7 @@ void terrain_filter::get_locations(std::set<map_location>& locs, bool with_borde
 			&& !cfg_.has_attribute("area") ) {
 
 		std::vector<map_location> xy_vector;
-		xy_vector = parse_location_range(cfg_["x"], cfg_["y"], with_border);
+		xy_vector = resources::gameboard->map().parse_location_range(cfg_["x"], cfg_["y"], with_border);
 		match_set.insert(xy_vector.begin(), xy_vector.end());
 	} else
 
@@ -443,7 +443,7 @@ void terrain_filter::get_locations(std::set<map_location>& locs, bool with_borde
 			&& !cfg_.has_attribute("area") ) {
 
 		std::vector<map_location> xy_vector;
-		xy_vector = parse_location_range(cfg_["x"], cfg_["y"], with_border);
+		xy_vector = resources::gameboard->map().parse_location_range(cfg_["x"], cfg_["y"], with_border);
 		match_set.insert(xy_vector.begin(), xy_vector.end());
 
 		// remove any locations not found in the specified variable
@@ -476,7 +476,7 @@ void terrain_filter::get_locations(std::set<map_location>& locs, bool with_borde
 			&& cfg_.has_attribute("area") ) {
 
 		std::vector<map_location> xy_vector;
-		xy_vector = parse_location_range(cfg_["x"], cfg_["y"], with_border);
+		xy_vector = resources::gameboard->map().parse_location_range(cfg_["x"], cfg_["y"], with_border);
 		const std::set<map_location>& area = resources::tod_manager->get_area_by_id(cfg_["area"]);
 
 		BOOST_FOREACH(const map_location& loc, xy_vector) {
@@ -515,7 +515,7 @@ void terrain_filter::get_locations(std::set<map_location>& locs, bool with_borde
 			&& cfg_.has_attribute("area") ) {
 
 		const std::vector<map_location>& xy_vector =
-				parse_location_range(cfg_["x"], cfg_["y"], with_border);
+				resources::gameboard->map().parse_location_range(cfg_["x"], cfg_["y"], with_border);
 		std::set<map_location> xy_set(xy_vector.begin(), xy_vector.end());
 
 		const std::set<map_location>& area = resources::tod_manager->get_area_by_id(cfg_["area"]);

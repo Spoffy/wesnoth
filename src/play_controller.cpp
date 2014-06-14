@@ -84,7 +84,7 @@ static void clear_resources()
 	resources::tunnels = NULL;
 	resources::undo_stack = NULL;
 	resources::units = NULL;
-	resources::whiteboard = NULL;
+	resources::whiteboard.reset();
 
 
 	resources::classification = NULL;
@@ -195,7 +195,7 @@ void play_controller::init(CVideo& video){
 	}
 
 	BOOST_FOREACH(const config &t, level_.child_range("time_area")) {
-		tod_manager_.add_time_area(t);
+		tod_manager_.add_time_area(gameboard_.map(),t);
 	}
 
 	LOG_NG << "initialized teams... "    << (SDL_GetTicks() - ticks_) << std::endl;
@@ -227,7 +227,7 @@ void play_controller::init(CVideo& video){
 			}
 		}
 		team_builder_ptr tb_ptr = gamedata_.create_team_builder(side,
-			save_id, gameboard_.teams_, level_, gameboard_.map_, gameboard_.units_, gamestate_.replay_start());
+			save_id, gameboard_.teams_, level_, *gameboard_.map_, gameboard_.units_, gamestate_.replay_start());
 		++team_num;
 		gamedata_.build_team_stage_one(tb_ptr);
 		team_builders.push_back(tb_ptr);
@@ -255,9 +255,15 @@ void play_controller::init(CVideo& video){
 	loadscreen::start_stage("init theme");
 	const config &theme_cfg = get_theme(game_config_, level_["theme"]);
 
+	LOG_NG << "initializing pathfinding and whiteboard..." << (SDL_GetTicks() - ticks_) << std::endl;
+	pathfind_manager_.reset(new pathfind::manager(level_));
+	whiteboard_manager_.reset(new wb::manager());
+	resources::tunnels = pathfind_manager_.get();
+	resources::whiteboard = whiteboard_manager_;
+
 	LOG_NG << "building terrain rules... " << (SDL_GetTicks() - ticks_) << std::endl;
 	loadscreen::start_stage("build terrain");
-	gui_.reset(new game_display(gameboard_, video, tod_manager_, theme_cfg, level_));
+	gui_.reset(new game_display(gameboard_, video, whiteboard_manager_, tod_manager_, theme_cfg, level_));
 	if (!gui_->video().faked()) {
 		if (gamestate_.mp_settings().mp_countdown)
 			gui_->get_theme().modify_label("time-icon", _ ("time left for current turn"));
@@ -316,12 +322,8 @@ void play_controller::init_managers(){
 	prefs_disp_manager_.reset(new preferences::display_manager(gui_.get()));
 	tooltips_manager_.reset(new tooltips::manager(gui_->video()));
 	soundsources_manager_.reset(new soundsource::manager(*gui_));
-	pathfind_manager_.reset(new pathfind::manager(level_));
-	whiteboard_manager_.reset(new wb::manager());
 
 	resources::soundsources = soundsources_manager_.get();
-	resources::tunnels = pathfind_manager_.get();
-	resources::whiteboard = whiteboard_manager_.get();
 
 	halo_manager_.reset(new halo::manager(*gui_));
 	LOG_NG << "done initializing managers... " << (SDL_GetTicks() - ticks_) << std::endl;
@@ -366,14 +368,14 @@ void play_controller::place_sides_in_preferred_locations()
 {
 	std::vector<placing_info> placings;
 
-	int num_pos = gameboard_.map_.num_valid_starting_positions();
+	int num_pos = gameboard_.map().num_valid_starting_positions();
 
 	int side_num = 1;
 	BOOST_FOREACH(const config &side, level_.child_range("side"))
 	{
 		for(int p = 1; p <= num_pos; ++p) {
-			const map_location& pos = gameboard_.map_.starting_position(p);
-			int score = placing_score(side, gameboard_.map_, pos);
+			const map_location& pos = gameboard_.map().starting_position(p);
+			int score = placing_score(side, gameboard_.map(), pos);
 			placing_info obj;
 			obj.side = side_num;
 			obj.score = score;
@@ -391,7 +393,7 @@ void play_controller::place_sides_in_preferred_locations()
 		if(placed.count(i->side) == 0 && positions_taken.count(i->pos) == 0) {
 			placed.insert(i->side);
 			positions_taken.insert(i->pos);
-			gameboard_.map_.set_starting_position(i->side,i->pos);
+			gameboard_.map_->set_starting_position(i->side,i->pos);
 			LOG_NG << "placing side " << i->side << " at " << i->pos << std::endl;
 		}
 	}
@@ -586,7 +588,7 @@ void play_controller::fire_start(bool execute){
 	if( gamestate_.classification().random_mode != "" && (network::nconnections() != 0))
 	{
 		std::string mes = _("MP game uses an alternative random mode, if you don't know what this message means, then most likeley someone is cheating or someone reloaded a corrupt game.");
-		resources::screen->add_chat_message(
+		gui_->add_chat_message(
 			time(NULL),
 			"game_engine",
 			0,
@@ -732,7 +734,7 @@ void play_controller::do_init_side(bool is_replay, bool only_visual) {
 	loading_game_ = false;
 
 	check_victory();
-	resources::whiteboard->on_init_side();
+	whiteboard_manager_->on_init_side();
 }
 
 //builds the snapshot config from its members and their configs respectively
@@ -790,7 +792,7 @@ config play_controller::to_config() const
 
 void play_controller::finish_side_turn(){
 
-	resources::whiteboard->on_finish_side_turn(player_number_);
+	whiteboard_manager_->on_finish_side_turn(player_number_);
 
 	gameboard_.end_turn(player_number_);
 
@@ -1285,12 +1287,12 @@ bool play_controller::in_context_menu(hotkey::HOTKEY_COMMAND command) const
 	case hotkey::HOTKEY_RECALL: {
 		// last_hex_ is set by mouse_events::mouse_motion
 		const map_location & last_hex = mouse_handler_.get_last_hex();
-		const int viewing_side = resources::screen->viewing_side();
+		const int viewing_side = gui_->viewing_side();
 
 		// A quick check to save us having to create the future map and
 		// possibly loop through all units.
-		if ( !resources::gameboard->map().is_keep(last_hex)  &&
-		     !resources::gameboard->map().is_castle(last_hex) )
+		if ( !gameboard_.map().is_keep(last_hex)  &&
+		     !gameboard_.map().is_castle(last_hex) )
 			return false;
 
 		wb::future_map future; /* lasts until method returns. */
@@ -1485,7 +1487,7 @@ void play_controller::process_oos(const std::string& msg) const
 	message << "\n\n" << _("Error details:") << "\n\n" << msg;
 
 	savegame::oos_savegame save(gamestate_, *gui_, to_config());
-	save.save_game_interactive(resources::screen->video(), message.str(), gui::YES_NO); // can throw end_level_exception
+	save.save_game_interactive(gui_->video(), message.str(), gui::YES_NO); // can throw end_level_exception
 }
 
 //this should be at the end of the file but it caused merging problems there.

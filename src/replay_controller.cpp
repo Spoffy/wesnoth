@@ -120,8 +120,6 @@ replay_controller::replay_controller(const config& level,
 	show_everything_(false),
 	show_team_(state_of_game.classification().campaign_type == game_classification::MULTIPLAYER ? 0 : 1)
 {
-	tod_manager_start_ = tod_manager_;
-
 	// Our parent class correctly detects that we are loading a game. However,
 	// we are not loading mid-game, so from here on, treat this as not loading
 	// a game. (Allows turn_1 et al. events to fire at the correct time.)
@@ -159,10 +157,9 @@ void replay_controller::init_gui(){
 
 	gui_->scroll_to_leader(player_number_, display::WARP);
 	update_locker lock_display((*gui_).video(),false);
-	BOOST_FOREACH(team & t, gameboard_.teams_) {
+	BOOST_FOREACH(const team & t, gameboard_.teams()) {
 		t.reset_objectives_changed();
 	}
-
 	update_replay_ui();
 }
 
@@ -495,7 +492,7 @@ possible_end_play_signal replay_controller::play_turn(){
 	bool last_team = false;
 
 	while ( (!last_team) && (!recorder.at_end()) && is_playing_ ){
-		last_team = static_cast<size_t>(player_number_) == gameboard_.teams_.size();
+		last_team = static_cast<size_t>(player_number_) == gameboard_.teams().size();
 		PROPOGATE_END_PLAY_SIGNAL( play_side() );
 		HANDLE_END_PLAY_SIGNAL( play_slice() );
 	}
@@ -549,11 +546,11 @@ possible_end_play_signal replay_controller::play_side() {
 
 	player_number_++;
 
-	if (static_cast<size_t>(player_number_) > gameboard_.teams_.size()) {
-		//during the orginal game player_number_ would also be gameboard_.teams_.size(),
-		player_number_ = gameboard_.teams_.size();
+	if (static_cast<size_t>(player_number_) > gameboard_.teams().size()) {
+		//during the orginal game player_number_ would also be gameboard_.teams().size(),
+		player_number_ = gameboard_.teams().size();
 		finish_turn();
-		tod_manager_.next_turn();
+		tod_manager_.next_turn(*resources::gamedata);
 		it_is_a_new_turn_ = true;
 		player_number_ = 1;
 		current_turn_++;
@@ -572,7 +569,7 @@ possible_end_play_signal replay_controller::play_side() {
 void replay_controller::update_teams(){
 
 	int next_team = player_number_;
-	if(static_cast<size_t>(next_team) > gameboard_.teams_.size()) {
+	if(static_cast<size_t>(next_team) > gameboard_.teams().size()) {
 		next_team = 1;
 	}
 

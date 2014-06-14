@@ -100,11 +100,12 @@ void playsingle_controller::init_gui(){
 	play_controller::init_gui();
 
 	if(first_human_team_ != -1) {
-		gui_->scroll_to_tile(gameboard_.map_.starting_position(first_human_team_ + 1), game_display::WARP);
+		gui_->scroll_to_tile(gameboard_.map().starting_position(first_human_team_ + 1), game_display::WARP);
 	}
-	gui_->scroll_to_tile(gameboard_.map_.starting_position(1), game_display::WARP);
+	gui_->scroll_to_tile(gameboard_.map().starting_position(1), game_display::WARP);
 
 	update_locker lock_display(gui_->video(),recorder.is_skipping());
+	set_button_state(*gui_);
 	events::raise_draw_event();
 	gui_->draw();
 }
@@ -112,21 +113,21 @@ void playsingle_controller::init_gui(){
 void playsingle_controller::recruit(){
 	if (!browse_)
 		menu_handler_.recruit(player_number_, mouse_handler_.get_last_hex());
-	else if (resources::whiteboard->is_active())
+	else if (whiteboard_manager_->is_active())
 		menu_handler_.recruit(resources::screen->viewing_side(), mouse_handler_.get_last_hex());
 }
 
 void playsingle_controller::repeat_recruit(){
 	if (!browse_)
 		menu_handler_.repeat_recruit(player_number_, mouse_handler_.get_last_hex());
-	else if (resources::whiteboard->is_active())
+	else if (whiteboard_manager_->is_active())
 		menu_handler_.repeat_recruit(resources::screen->viewing_side(), mouse_handler_.get_last_hex());
 }
 
 void playsingle_controller::recall(){
 	if (!browse_)
 		menu_handler_.recall(player_number_, mouse_handler_.get_last_hex());
-	else if (resources::whiteboard->is_active())
+	else if (whiteboard_manager_->is_active())
 		menu_handler_.recall(resources::screen->viewing_side(), mouse_handler_.get_last_hex());
 }
 
@@ -157,7 +158,7 @@ void playsingle_controller::check_end_level()
 {
 	if (level_result_ == NONE || linger_)
 	{
-		team &t = gameboard_.teams_[gui_->viewing_team()];
+		const team &t = gameboard_.teams()[gui_->viewing_team()];
 		if (!browse_ && t.objectives_changed()) {
 			dialogs::show_objectives(level_, t.objectives());
 			t.reset_objectives_changed();
@@ -223,9 +224,9 @@ void playsingle_controller::clear_messages(){
 }
 
 void playsingle_controller::whiteboard_toggle() {
-	resources::whiteboard->set_active(!resources::whiteboard->is_active());
+	whiteboard_manager_->set_active(!whiteboard_manager_->is_active());
 
-	if (resources::whiteboard->is_active()) {
+	if (whiteboard_manager_->is_active()) {
 		std::string hk = hotkey::get_names(hotkey::hotkey_command::get_command_by_command(hotkey::HOTKEY_WB_TOGGLE).command);
 		utils::string_map symbols;
 		symbols["hotkey"] = hk;
@@ -236,7 +237,7 @@ void playsingle_controller::whiteboard_toggle() {
 		gui_->announce(_("Planning mode deactivated!"), font::NORMAL_COLOR);
 	}
 	//@todo Stop printing whiteboard help in the chat once we have better documentation/help
-	resources::whiteboard->print_help_once();
+	whiteboard_manager_->print_help_once();
 }
 
 void playsingle_controller::whiteboard_execute_action(){
@@ -392,8 +393,8 @@ possible_end_play_signal playsingle_controller::play_scenario_main_loop(end_leve
 	LOG_NG << "starting main loop\n" << (SDL_GetTicks() - ticks_) << "\n";
 
 	// Initialize countdown clock.
-	std::vector<team>::iterator t;
-	for(t = gameboard_.teams_.begin(); t != gameboard_.teams_.end(); ++t) {
+	std::vector<team>::const_iterator t;
+	for(t = gameboard_.teams().begin(); t != gameboard_.teams().end(); ++t) {
 		if (gamestate_.mp_settings().mp_countdown && !loading_game_ ){
 			t->set_countdown_time(1000 * gamestate_.mp_settings().mp_countdown_init_time);
 		}
@@ -493,7 +494,7 @@ LEVEL_RESULT playsingle_controller::play_scenario(
 						}
 					}
 
-					if (gameboard_.teams_.empty())
+					if (gameboard_.teams().empty())
 					{
 						//store persistent teams
 						gamestate_.snapshot = config();
@@ -617,7 +618,7 @@ LEVEL_RESULT playsingle_controller::play_scenario(
 
 possible_end_play_signal playsingle_controller::play_turn()
 {
-	resources::whiteboard->on_gamestate_change();
+	whiteboard_manager_->on_gamestate_change();
 	gui_->new_turn();
 	gui_->invalidate_game_status();
 	events::raise_draw_event();
@@ -628,7 +629,7 @@ possible_end_play_signal playsingle_controller::play_turn()
 		LOG_AIT << "Turn " << turn() << ":" << std::endl;
 	}
 
-	for (player_number_ = first_player_; player_number_ <= int(gameboard_.teams_.size()); ++player_number_)
+	for (player_number_ = first_player_; player_number_ <= int(gameboard_.teams().size()); ++player_number_)
 	{
 		// If a side is empty skip over it.
 		if (current_team().is_empty()) continue;
@@ -678,8 +679,8 @@ possible_end_play_signal playsingle_controller::play_turn()
 	}
 	//If the loop exits due to the last team having been processed,
 	//player_number_ will be 1 too high
-	if(player_number_ > static_cast<int>(gameboard_.teams_.size()))
-		player_number_ = gameboard_.teams_.size();
+	if(player_number_ > static_cast<int>(gameboard_.teams().size()))
+		player_number_ = gameboard_.teams().size();
 
 	finish_turn();
 
@@ -713,7 +714,7 @@ possible_end_play_signal playsingle_controller::play_side()
 		if (!skip_next_turn_)
 			end_turn_ = false;
 
-		statistics::reset_turn_stats(gameboard_.teams_[player_number_ - 1].save_id());
+		statistics::reset_turn_stats(gameboard_.teams()[player_number_ - 1].save_id());
 
 		if(current_team().is_human() || temporary_human) {
 			LOG_NG << "is human...\n";
@@ -738,7 +739,7 @@ possible_end_play_signal playsingle_controller::play_side()
 								player_type_changed_ = true;
 								// If new controller is not human,
 								// reset gui to prev human one
-								if (!gameboard_.teams_[player_number_-1].is_human()) {
+								if (!gameboard_.teams()[player_number_-1].is_human()) {
 									browse_ = true;
 									int s = find_human_team_before_current_player();
 									if (s <= 0)
@@ -796,7 +797,7 @@ possible_end_play_signal playsingle_controller::play_side()
 							player_type_changed_ = true;
 							// If new controller is not human,
 							// reset gui to prev human one
-							if (!gameboard_.teams_[player_number_-1].is_human()) {
+							if (!gameboard_.teams()[player_number_-1].is_human()) {
 								browse_ = true;
 								int s = find_human_team_before_current_player();
 								if (s <= 0)
@@ -842,7 +843,7 @@ void playsingle_controller::show_turn_dialog(){
 		resources::screen->redraw_everything();
 		std::string message = _("It is now $name|’s turn");
 		utils::string_map symbols;
-		symbols["name"] = gameboard_.teams_[player_number_ - 1].current_player();
+		symbols["name"] = gameboard_.teams()[player_number_ - 1].current_player();
 		message = utils::interpolate_variables_into_string(message, &symbols);
 		gui2::show_transient_message(gui_->video(), "", message);
 	}
@@ -926,7 +927,7 @@ hotkey::ACTION_STATE playsingle_controller::get_action_state(hotkey::HOTKEY_COMM
 {
 	switch(command) {
 	case hotkey::HOTKEY_WB_TOGGLE:
-		return resources::whiteboard->is_active() ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
+		return whiteboard_manager_->is_active() ? hotkey::ACTION_ON : hotkey::ACTION_OFF;
 	default:
 		return play_controller::get_action_state(command, index);
 	}
@@ -1012,7 +1013,7 @@ void playsingle_controller::handle_generic_event(const std::string& name){
 }
 
 possible_end_play_signal playsingle_controller::check_time_over(){
-	bool b = tod_manager_.next_turn();
+	bool b = tod_manager_.next_turn(*resources::gamedata);
 	it_is_a_new_turn_ = true;
 	if(!b) {
 
@@ -1048,31 +1049,31 @@ bool playsingle_controller::can_execute_command(const hotkey::hotkey_command& cm
 
 		case hotkey::HOTKEY_WML:
 			//code mixed from play_controller::show_menu and code here
-			return (gui_->viewing_team() == gui_->playing_team()) && !events::commands_disabled && gameboard_.teams_[gui_->viewing_team()].is_human() && !linger_ && !browse_;
+			return (gui_->viewing_team() == gui_->playing_team()) && !events::commands_disabled && gameboard_.teams()[gui_->viewing_team()].is_human() && !linger_ && !browse_;
 		case hotkey::HOTKEY_UNIT_HOLD_POSITION:
 		case hotkey::HOTKEY_END_UNIT_TURN:
 			return !browse_ && !linger_ && !events::commands_disabled;
 		case hotkey::HOTKEY_RECRUIT:
 		case hotkey::HOTKEY_REPEAT_RECRUIT:
 		case hotkey::HOTKEY_RECALL:
-			return (!browse_ || resources::whiteboard->is_active()) && !linger_ && !events::commands_disabled;
+			return (!browse_ || whiteboard_manager_->is_active()) && !linger_ && !events::commands_disabled;
 		case hotkey::HOTKEY_ENDTURN:
 			return (!browse_ || linger_) && !events::commands_disabled;
 
 		case hotkey::HOTKEY_DELAY_SHROUD:
-			return !linger_ && (gameboard_.teams_[gui_->viewing_team()].uses_fog() || gameboard_.teams_[gui_->viewing_team()].uses_shroud())
+			return !linger_ && (gameboard_.teams()[gui_->viewing_team()].uses_fog() || gameboard_.teams()[gui_->viewing_team()].uses_shroud())
 			&& !events::commands_disabled;
 		case hotkey::HOTKEY_UPDATE_SHROUD:
 			return !linger_
 				&& player_number_ == gui_->viewing_side()
 				&& !events::commands_disabled
-				&& gameboard_.teams_[gui_->viewing_team()].auto_shroud_updates() == false;
+				&& gameboard_.teams()[gui_->viewing_team()].auto_shroud_updates() == false;
 
 		// Commands we can only do if in debug mode
 		case hotkey::HOTKEY_CREATE_UNIT:
 		case hotkey::HOTKEY_CHANGE_SIDE:
 		case hotkey::HOTKEY_KILL_UNIT:
-			return !events::commands_disabled && game_config::debug && gameboard_.map_.on_board(mouse_handler_.get_last_hex());
+			return !events::commands_disabled && game_config::debug && gameboard_.map().on_board(mouse_handler_.get_last_hex());
 
 		case hotkey::HOTKEY_CLEAR_LABELS:
 			res = !is_observer();
@@ -1080,7 +1081,7 @@ bool playsingle_controller::can_execute_command(const hotkey::hotkey_command& cm
 		case hotkey::HOTKEY_LABEL_TEAM_TERRAIN:
 		case hotkey::HOTKEY_LABEL_TERRAIN: {
 			const terrain_label *label = resources::screen->labels().get_label(mouse_handler_.get_last_hex());
-			res = !events::commands_disabled && gameboard_.map_.on_board(mouse_handler_.get_last_hex())
+			res = !events::commands_disabled && gameboard_.map().on_board(mouse_handler_.get_last_hex())
 				&& !gui_->shrouded(mouse_handler_.get_last_hex())
 				&& !is_observer()
 				&& (!label || !label->immutable());
@@ -1090,23 +1091,23 @@ bool playsingle_controller::can_execute_command(const hotkey::hotkey_command& cm
 			if(browse_ || events::commands_disabled)
 				return false;
 
-			if( (menu_handler_.current_unit() != gameboard_.units_.end())
+			if( (menu_handler_.current_unit().valid())
 				&& (menu_handler_.current_unit()->move_interrupted()))
 				return true;
-			const unit_map::const_iterator i = gameboard_.units_.find(mouse_handler_.get_selected_hex());
-			if (i == gameboard_.units_.end()) return false;
+			const unit_map::const_iterator i = gameboard_.units().find(mouse_handler_.get_selected_hex());
+			if (!i.valid()) return false;
 			return i->move_interrupted();
 		}
 		case hotkey::HOTKEY_WB_TOGGLE:
 			return !is_observer();
 		case hotkey::HOTKEY_WB_EXECUTE_ACTION:
 		case hotkey::HOTKEY_WB_EXECUTE_ALL_ACTIONS:
-			return resources::whiteboard->can_enable_execution_hotkeys();
+			return whiteboard_manager_->can_enable_execution_hotkeys();
 		case hotkey::HOTKEY_WB_DELETE_ACTION:
-			return resources::whiteboard->can_enable_modifier_hotkeys();
+			return whiteboard_manager_->can_enable_modifier_hotkeys();
 		case hotkey::HOTKEY_WB_BUMP_UP_ACTION:
 		case hotkey::HOTKEY_WB_BUMP_DOWN_ACTION:
-			return resources::whiteboard->can_enable_reorder_hotkeys();
+			return whiteboard_manager_->can_enable_reorder_hotkeys();
 		case hotkey::HOTKEY_WB_SUPPOSE_DEAD:
 		{
 			//@todo re-enable this once we figure out a decent UI for suppose_dead

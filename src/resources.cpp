@@ -24,14 +24,13 @@ namespace resources
 	LuaKernel            *lua_kernel = NULL;
 	persist_manager      *persist = NULL;
 	game_display         *screen = NULL;
-	const display_context *disp_context = NULL;
 	soundsource::manager *soundsources = NULL;
 	std::vector<team>    *teams = NULL;
 	::tod_manager        *tod_manager = NULL;
 	pathfind::manager    *tunnels = NULL;
 	actions::undo_list   *undo_stack = NULL;
 	unit_map             *units = NULL;
-	wb::manager          *whiteboard = NULL;
+	boost::shared_ptr<wb::manager> whiteboard = boost::shared_ptr<wb::manager>();
 	game_classification  *classification = NULL;
 	const mp_game_settings *mp_settings = NULL;
 }

@@ -140,7 +140,7 @@ public:
 		return gameboard_.teams_;
 	}
 	const gamemap& get_map_const() const{
-		return gameboard_.map_;
+		return gameboard_.map();
 	}
 	const tod_manager& get_tod_manager_const() const{
 			return tod_manager_;
@@ -247,7 +247,7 @@ protected:
 	boost::scoped_ptr<actions::undo_list> undo_stack_;
 
 	//whiteboard manager
-	boost::scoped_ptr<wb::manager> whiteboard_manager_;
+	boost::shared_ptr<wb::manager> whiteboard_manager_;
 
 	const unit_type::experience_accelerator xp_mod_;
 	//if a team is specified whose turn it is, it means we're loading a game

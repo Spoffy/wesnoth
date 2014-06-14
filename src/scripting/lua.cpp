@@ -1271,16 +1271,13 @@ static int intf_set_terrain(lua_State *L)
 {
 	int x = luaL_checkint(L, 1);
 	int y = luaL_checkint(L, 2);
-	t_translation::t_terrain terrain = t_translation::read_terrain_code(luaL_checkstring(L, 3));
-	if (terrain == t_translation::NONE_TERRAIN) return 0;
+	std::string t_str(luaL_checkstring(L, 3));
 
-	gamemap::tmerge_mode mode = gamemap::BOTH;
+	std::string mode_str = "both";
 	bool replace_if_failed = false;
 	if (!lua_isnone(L, 4)) {
 		if (!lua_isnil(L, 4)) {
-			const char* const layer = luaL_checkstring(L, 4);
-			if (strcmp(layer, "base") == 0) mode = gamemap::BASE;
-			else if (strcmp(layer, "overlay") == 0) mode = gamemap::OVERLAY;
+			mode_str = luaL_checkstring(L, 4);
 		}
 
 		if(!lua_isnoneornil(L, 5)) {
@@ -1288,7 +1285,7 @@ static int intf_set_terrain(lua_State *L)
 		}
 	}
 
-	bool result = resources::gameboard->change_terrain(map_location(x - 1, y - 1), terrain, mode, replace_if_failed);
+	bool result = resources::gameboard->change_terrain(map_location(x - 1, y - 1), t_str, mode_str, replace_if_failed);
 	if (result) {
 		resources::screen->recalculate_minimap();
 		resources::screen->invalidate_all();
@@ -1367,7 +1364,7 @@ static int intf_get_time_of_day(lua_State *L)
 	}
 
 	const time_of_day& tod = consider_illuminates ?
-		resources::tod_manager->get_illuminated_time_of_day(loc, for_turn) :
+		resources::tod_manager->get_illuminated_time_of_day(resources::gameboard->units(), resources::gameboard->map(), loc, for_turn) :
 		resources::tod_manager->get_time_of_day(loc, for_turn);
 
 	lua_newtable(L);
@@ -3578,10 +3575,10 @@ namespace {
 		std::string name;
 		lua_report_generator(lua_State *L, const std::string &n)
 			: mState(L), name(n) {}
-		virtual config generate();
+		virtual config generate(reports::context & rc);
 	};
 
-	config lua_report_generator::generate()
+	config lua_report_generator::generate(reports::context & /*rc*/)
 	{
 		lua_State *L = mState;
 		config cfg;
@@ -3600,7 +3597,8 @@ namespace {
 static int cfun_theme_item(lua_State *L)
 {
 	const char *m = lua_tostring(L, lua_upvalueindex(1));
-	luaW_pushconfig(L, reports::generate_report(m, true));
+	reports::context temp_context = reports::context(*resources::gameboard, *resources::screen, *resources::tod_manager, resources::whiteboard, resources::controller->get_mouse_handler_base());
+	luaW_pushconfig(L, reports::generate_report(m, temp_context , true));
 	return 1;
 }
 

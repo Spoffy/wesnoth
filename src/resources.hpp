@@ -16,11 +16,11 @@
 #define RESOURCES_H_
 
 #include <vector>
+#include <boost/shared_ptr.hpp>
 
 class game_board;
 class game_config_manager;
 class game_display;
-class display_context;
 class gamemap;
 class game_data;
 class LuaKernel;
@@ -49,7 +49,6 @@ namespace resources
 	extern persist_manager        *persist;
 	extern game_classification    *classification;
 	extern game_display           *screen;
-	extern const display_context  *disp_context;
 	extern const mp_game_settings *mp_settings;
 	extern soundsource::manager   *soundsources;
 	extern std::vector<team>      *teams;
@@ -57,7 +56,7 @@ namespace resources
 	extern pathfind::manager      *tunnels;
 	extern actions::undo_list     *undo_stack;
 	extern unit_map               *units;
-	extern wb::manager            *whiteboard;
+	extern boost::shared_ptr<wb::manager> whiteboard;
 }
 
 #endif

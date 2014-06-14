@@ -405,7 +405,7 @@ if env["prereqs"]:
     test_env = client_env.Clone()
     conf = test_env.Configure(**configure_args)
 
-    have_test_prereqs = have_client_prereqs and have_server_prereqs and conf.CheckBoost('unit_test_framework') \
+    have_test_prereqs = have_client_prereqs and conf.CheckBoost('unit_test_framework') \
                             or Warning("WARN: Unit tests are disabled because their prerequisites are not met")
 
     have_umcd_test_prereqs = have_umcd_prereqs or Warning("UMCD unit tests prerequisites are not met. umcd_test cannot be built.");
