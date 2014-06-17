@@ -16,6 +16,7 @@ for env in [test_env, client_env, env]:
 libwesnoth_core_sources = Split("""
     color_range.cpp
     config.cpp
+    config_cache.cpp
     gettext.cpp
     hash.cpp
     log.cpp
@@ -23,6 +24,7 @@ libwesnoth_core_sources = Split("""
     map_location.cpp
     md5.cpp
     network.cpp
+    sha1.cpp
     thread.cpp
     tstring.cpp
     util.cpp
@@ -229,7 +231,6 @@ wesnoth_sources = Split("""
     callable_objects.cpp
     commandline_options.cpp
     carryover.cpp
-    config_cache.cpp
     controller_base.cpp
     desktop_util.cpp
     dialogs.cpp
@@ -500,7 +501,6 @@ wesnoth_sources = Split("""
     scripting/lua_api.cpp
     scripting/lua_types.cpp
     settings.cpp
-    sha1.cpp
     side_filter.cpp
     statistics.cpp
     statistics_dialog.cpp
@@ -594,6 +594,7 @@ umcd_sources = Split("""
     umcd/umcd.cpp
     umcd/server_options.cpp
     umcd/database/database.cpp
+    umcd/database/database_query.cpp
     umcd/database/connection_pool.cpp
     umcd/database/connection_instance.cpp
     umcd/server/basic_server.cpp
@@ -622,7 +623,7 @@ umcd_sources = Split("""
 
 libumcd = env.Library("umcd", libumcd_sources, OBJPREFIX = "umcd_")
 
-env.WesnothProgram("umcd", umcd_sources + [libwesnoth_core, libwesnothd, libumcd, libschema], have_umcd_prereqs)
+env.WesnothProgram("umcd", umcd_sources + [libwesnoth_core, libwesnothd, libumcd], have_umcd_prereqs)
 
 sqlparser_sources = Split("""
     tools/code_generator/sql2cpp/sql2cpp.cpp
@@ -736,7 +737,7 @@ umcd_test_sources = Split("""
     tests/umcd/send_receive_test.cpp
     """)
 
-test_env.WesnothProgram("umcd_test", umcd_test_sources + [libwesnoth_core, libwesnothd, libumcd, libschema], have_umcd_test_prereqs)
+test_env.WesnothProgram("umcd_test", umcd_test_sources + [libwesnoth_core, libwesnothd, libumcd], have_umcd_test_prereqs)
 
 create_images_sources = Split("""
     tests/create_images.cpp
