@@ -599,6 +599,7 @@ umcd_sources = Split("""
     umcd/database/connection_instance.cpp
     umcd/server/basic_server.cpp
     umcd/server/multi_threaded/server_mt.cpp
+    umcd/server/umcd_server.cpp
     umcd/logger/logger.cpp
     umcd/logger/asio_logger.cpp
     umcd/logger/severity_level.cpp
