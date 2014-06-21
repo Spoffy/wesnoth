@@ -14,6 +14,7 @@
 
 
 
+#include "umcd/server/umcd_server.hpp"
 #include "umcd/server_options.hpp"
 #include "umcd/server/multi_threaded/server_mt.hpp"
 #include "umcd/server/daemon.hpp"
@@ -30,6 +31,7 @@
 #include "config.hpp"
 
 #include "umcd/boost/thread/workaround.hpp"
+#include <neev/server/server_mt.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/bind.hpp>
 #include <boost/asio.hpp>
@@ -38,31 +40,6 @@
 #include <stdexcept>
 
 using namespace umcd;
-
-static void endpoint_failure_handler(const std::string& message)
-{
-	UMCD_LOG(info) << message << "\n";
-}
-
-static void start_success_handler(const boost::asio::ip::tcp::endpoint& message)
-{
-	UMCD_LOG(info) << "Server launched (" << message << ").";
-}
-
-static void start_failure_handler()
-{
-	throw std::runtime_error("No endpoints found - Check the status of your network interfaces.");
-}
-
-static void on_run_exception_handler(const std::exception& e)
-{
-	UMCD_LOG(error) << "Exception in basic_server::run(): handler shouldn't launch exception! (" << e.what() << ").";
-}
-
-static void on_run_unknown_exception_handler()
-{
-	UMCD_LOG(error) << "Exception in basic_server::run(): handler shouldn't launch exception! (this exception doesn't inherit from std::exception).";
-}
 
 int main(int argc, char *argv[])
 {
@@ -100,14 +77,7 @@ int main(int argc, char *argv[])
 			}
 
 			server_core core;
-			server_mt addon_server(core.threads());
-			// Set server event handlers.
-			addon_server.on_event<endpoint_failure>(endpoint_failure_handler);
-			addon_server.on_event<start_success>(start_success_handler);
-			addon_server.on_event<start_failure>(start_failure_handler);
-			addon_server.on_event<on_run_exception>(on_run_exception_handler);
-			addon_server.on_event<on_run_unknown_exception>(on_run_unknown_exception_handler);
-			addon_server.on_event<on_new_client>(protocol_entry_point);
+			neev::server_mt<umcd_server> addon_server(umcd_server(), core.threads());
 
 			// Launch logger.
 			asio_logger logger(boost::ref(addon_server.get_io_service()), boost::posix_time::milliseconds(500));
