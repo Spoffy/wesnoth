@@ -17,7 +17,7 @@
 #include "umcd/logger/asio_logger.hpp"
 
 namespace umcd{
-void protocol_entry_point(const boost::shared_ptr<boost::asio::ip::tcp::socket>& socket)
+void protocol_entry_point(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket)
 {
 	UMCD_LOG_IP_FUNCTION_TRACER(socket);
 	boost::shared_ptr<action_dispatcher> dispatcher = boost::make_shared<action_dispatcher>(socket);

@@ -21,7 +21,7 @@
 namespace umcd{
 /** This is the protocol entry point after the server has just accepted a client.
 */
-void protocol_entry_point(const boost::shared_ptr<boost::asio::ip::tcp::socket>& socket);
+void protocol_entry_point(const std::shared_ptr<boost::asio::ip::tcp::socket>& socket);
 } // namespace umcd
 
 #endif // UMCD_ENTRY_POINT_HPP
