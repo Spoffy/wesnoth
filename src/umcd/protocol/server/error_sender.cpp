@@ -13,23 +13,31 @@
 */
 
 #include "umcd/protocol/server/error_sender.hpp"
-#include "umcd/protocol/make_header.hpp"
-#include "umcd/protocol/server/close_on_error.hpp"
+//#include "umcd/protocol/make_header.hpp"
+//#include "umcd/protocol/server/close_on_error.hpp"
 #include "umcd/protocol/server/special_packet.hpp"
+#include "umcd/server/default_transfer_observer.hpp"
 #include "umcd/logger/asio_logger.hpp"
 #include "config.hpp"
 
+#include <neev/buffer/prefixed_buffer.hpp>
+#include <neev/network_transfer.hpp>
+#include <neev/transfer_operation.hpp>
+
 namespace umcd{
 
-void async_send_error(const boost::shared_ptr<boost::asio::ip::tcp::socket> &socket, const std::string& error_message)
+void async_send_error(const std::shared_ptr<boost::asio::ip::tcp::socket> &socket, const std::string& error_message)
 {
+  using namespace neev;
+  using buffer_type = prefixed32_buffer<receive_op>;
 	UMCD_LOG_IP_FUNCTION_TRACER(socket);
-	boost::shared_ptr<header_sender> sender = make_header_sender(socket, make_error_packet(error_message));
-	sender->on_event<transfer_error>(boost::bind(&close_on_error, socket, _1));
-	sender->async_send();
+	config error_message_config = make_error_packet(error_message);
+  std::string data_to_send = error_message_config.to_string();
+  auto sender = make_transfer<buffer_type>(socket, default_transfer_observer(), data_to_send);
+  sender->async_transfer();
 }
 
-void async_send_error(const boost::shared_ptr<boost::asio::ip::tcp::socket> &socket, const boost::system::error_condition& error, const std::string& extra_msg)
+void async_send_error(const std::shared_ptr<boost::asio::ip::tcp::socket> &socket, const boost::system::error_condition& error, const std::string& extra_msg)
 {
 	UMCD_LOG_IP_FUNCTION_TRACER(socket);
 	async_send_error(socket, error.message() + extra_msg);

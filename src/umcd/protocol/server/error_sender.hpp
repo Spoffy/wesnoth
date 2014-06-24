@@ -16,14 +16,13 @@
 #define UMCD_ERROR_SENDER_HPP
 
 #include <boost/asio.hpp>
-#include <boost/shared_ptr.hpp>
 
 namespace umcd{
 
 /** Asynchronously send an error and close the socket if it fails to send it.
 */
-void async_send_error(const boost::shared_ptr<boost::asio::ip::tcp::socket> &socket, const std::string& error_message);
-void async_send_error(const boost::shared_ptr<boost::asio::ip::tcp::socket> &socket, const boost::system::error_condition& error, const std::string& extra_msg = "");
+void async_send_error(const std::shared_ptr<boost::asio::ip::tcp::socket> &socket, const std::string& error_message);
+void async_send_error(const std::shared_ptr<boost::asio::ip::tcp::socket> &socket, const boost::system::error_condition& error, const std::string& extra_msg = "");
 } // namespace umcd
 
 #endif // UMCD_ERROR_SENDER_HPP
