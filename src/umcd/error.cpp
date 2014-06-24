@@ -25,7 +25,7 @@ const boost::array<std::string, num_error> error_category::error_messages = {{
 	"A field in your request is longer in size than allowed." // field_too_long
 }};
 
-const char* error_category::name() const
+const char* error_category::name() const noexcept
 {
 	return "umcd";
 }

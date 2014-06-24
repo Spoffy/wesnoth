@@ -52,7 +52,7 @@ class error_category : public boost::system::error_category
 {
 	static const boost::array<std::string, num_error> error_messages;
 public:
-	const char* name() const;
+	const char* name() const noexcept;
 	std::string message(int ev) const;
 };
 } // namespace umcd
