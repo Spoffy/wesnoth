@@ -21,18 +21,23 @@
 #include "config.hpp"
 #include <boost/asio.hpp>
 #include <boost/enable_shared_from_this.hpp>
+#include <neev/buffer/prefixed_buffer.hpp>
 
 namespace umcd{
 
 class action_dispatcher : public boost::enable_shared_from_this<action_dispatcher>
 {
 public:
-	typedef boost::shared_ptr<basic_action> action_ptr;
-	typedef boost::asio::ip::tcp::socket socket_type;
-	typedef boost::shared_ptr<socket_type> socket_ptr;
+	using action_ptr = std::shared_ptr<basic_action>;
+	using socket_type = boost::asio::ip::tcp::socket;
+	using socket_ptr = std::shared_ptr<socket_type>;
+
+  using receive_buffer_type = neev::prefixed16_buffer<neev::receive_op>;
+  using events_type = neev::events<neev::transfer_complete>;
+  using data_type = receive_buffer_type::type::data_type;
 
 private:
-	typedef generic_factory<basic_action> action_factory_type;
+	using action_factory_type = generic_factory<basic_action>;
 
 public:
 	action_dispatcher(const socket_ptr& socket)
@@ -43,7 +48,9 @@ public:
 	* We read it in this class because the data will only be used here.
 	* The dispatch will be automatic after the reading.
 	*/
-	void async_receive_request();
+	void async_read_request();
+
+  void transfer_complete(const data_type& data);
 
 private:
 	/** Dispatch a successful read request on the good action.
@@ -51,7 +58,7 @@ private:
 	void dispatch();
 
 	socket_ptr socket_;
-	config header_metadata_;
+	config received_request_;
 
 	/** Boilerplate code that initialized the action factory.
 	* This factory maps request name to action object.

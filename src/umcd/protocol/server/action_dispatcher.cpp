@@ -27,17 +27,25 @@ action_dispatcher::action_factory_initializer action_dispatcher::action_init;
 
 action_dispatcher::action_factory_initializer::action_factory_initializer()
 {
-	action_factory.register_product("request_license", boost::make_shared<request_license_action>());
-	action_factory.register_product("request_umc_upload", boost::make_shared<request_umc_upload_action>());
+	action_factory.register_product("request_license", std::make_shared<request_license_action>());
+	action_factory.register_product("request_umc_upload", std::make_shared<request_umc_upload_action>());
 }
 
-void action_dispatcher::async_receive_request()
+void action_dispatcher::async_read_request()
 {
+  using namespace neev;
 	UMCD_LOG_IP_FUNCTION_TRACER(socket_);
-	boost::shared_ptr<core::header_mutable_buffer::receiver_type> receiver = make_header_receiver(socket_, header_metadata_);
-	receiver->on_event<transfer_error>(boost::bind(&close_on_error, socket_, _1));
-	receiver->on_event<transfer_complete>(boost::bind(&action_dispatcher::dispatch, shared_from_this()));
-	receiver->async_receive();
+  auto receive_transfer = make_transfer<receive_buffer_type>(socket_, *this);
+  receive_transfer->async_transfer();
+}
+
+//Refactor to remove header_data intermediary. Totally unnecessary.
+void action_dispatcher::transfer_complete(const data_type& data) {
+  UMCD_LOG_IP(debug, socket_) << "action_dispatcher received incoming data " << data;
+  core::header_data header;
+  header.metadata = data;
+  received_request_ << header;
+  dispatch();
 }
 
 void action_dispatcher::dispatch()
@@ -46,7 +54,7 @@ void action_dispatcher::dispatch()
 	try
 	{
 		// Retrieve request name.
-		config::all_children_itors range = header_metadata_.all_children_range();
+		config::all_children_itors range = received_request_.all_children_range();
 		if(range.first == range.second)
 		{
 		  UMCD_LOG_IP(warning, socket_) << "invalid request at " << BOOST_CURRENT_FUNCTION << " (Request name not found).";
@@ -56,10 +64,10 @@ void action_dispatcher::dispatch()
 		{
 			const std::string& request_name = range.first->key;
 			UMCD_LOG_IP(info, socket_) << "request name: " << request_name;
-			UMCD_LOG_IP(trace, socket_) << "request header:\n" << header_metadata_;
+			UMCD_LOG_IP(trace, socket_) << "request header:\n" << received_request_;
 
 			action_ptr action = action_factory.make_product(request_name);
-			action->execute(socket_, header_metadata_);
+			action->execute(socket_, received_request_);
 		}
 	}
 	catch(const std::exception& e)
