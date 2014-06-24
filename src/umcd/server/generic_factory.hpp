@@ -19,7 +19,6 @@
 #include <map>
 #include <stdexcept>
 #include <boost/lexical_cast.hpp>
-#include <boost/shared_ptr.hpp>
 
 class product_not_found : public std::logic_error
 {
@@ -42,7 +41,7 @@ class generic_factory
 public:
 	typedef Product product_type;
 	typedef Identifier identifier_type;
-	typedef boost::shared_ptr<product_type> product_ptr;
+	typedef std::shared_ptr<product_type> product_ptr;
 private:
 	typedef std::map<identifier_type, product_ptr> id_to_product_map;
 public:

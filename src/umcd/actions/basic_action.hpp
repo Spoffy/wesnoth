@@ -38,7 +38,7 @@ private:
 public:
 	typedef basic_action this_type;
 	typedef boost::asio::ip::tcp::socket socket_type;
-	typedef boost::shared_ptr<socket_type> socket_ptr;
+	typedef std::shared_ptr<socket_type> socket_ptr;
 
 	/** Execute the logic behind an action. The action analyse the request and use the 
 	* socket to send the response.
