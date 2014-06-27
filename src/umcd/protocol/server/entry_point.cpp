@@ -21,6 +21,6 @@ void protocol_entry_point(const std::shared_ptr<boost::asio::ip::tcp::socket>& s
 {
 	UMCD_LOG_IP_FUNCTION_TRACER(socket);
 	boost::shared_ptr<action_dispatcher> dispatcher = boost::make_shared<action_dispatcher>(socket);
-	dispatcher->async_receive_request();
+	dispatcher->async_read_request();
 }
 } // namespace umcd
