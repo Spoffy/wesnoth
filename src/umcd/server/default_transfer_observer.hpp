@@ -27,3 +27,5 @@ class default_transfer_observer {
   void transfer_error(const boost::system::error_code&);
 };
 } //end umcd namespace
+
+#endif
