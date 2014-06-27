@@ -29,11 +29,11 @@ namespace umcd{
 void async_send_error(const std::shared_ptr<boost::asio::ip::tcp::socket> &socket, const std::string& error_message)
 {
   using namespace neev;
-  using buffer_type = prefixed32_buffer<receive_op>;
+  using buffer_type = prefixed32_buffer<send_op>;
 	UMCD_LOG_IP_FUNCTION_TRACER(socket);
 	config error_message_config = make_error_packet(error_message);
   std::string data_to_send = error_message_config.to_string();
-  auto sender = make_transfer<buffer_type>(socket, default_transfer_observer(), data_to_send);
+  auto sender = make_transfer<buffer_type>(socket, default_transfer_observer(), std::move(data_to_send));
   sender->async_transfer();
 }
 
