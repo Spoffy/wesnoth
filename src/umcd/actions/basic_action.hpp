@@ -33,12 +33,12 @@ namespace umcd{
 class basic_action
 {
 private:
-	typedef schema_validation::schema_validator validator_type;
+	using validator_type = schema_validation::schema_validator;
 
 public:
-	typedef basic_action this_type;
-	typedef boost::asio::ip::tcp::socket socket_type;
-	typedef std::shared_ptr<socket_type> socket_ptr;
+	using this_type = basic_action;
+	using socket_type = boost::asio::ip::tcp::socket;
+	using socket_ptr = std::shared_ptr<socket_type>;
 
 	/** Execute the logic behind an action. The action analyse the request and use the 
 	* socket to send the response.
@@ -52,7 +52,7 @@ public:
 
 	/** Create an action of the current sub-type.
 	*/
-	virtual boost::shared_ptr<this_type> create() const = 0;
+	virtual std::shared_ptr<this_type> create() const = 0;
 	virtual ~basic_action(){}
 };
 
@@ -67,9 +67,9 @@ public:
 	*/
 	virtual void execute(const socket_ptr& socket, const config& request) = 0;
 
-	virtual boost::shared_ptr<basic_action> create() const
+	virtual std::shared_ptr<basic_action> create() const
 	{
-		return boost::make_shared<ActionType>();
+		return std::make_shared<ActionType>();
 	}
 
 	virtual ~basic_action_crtp(){}
