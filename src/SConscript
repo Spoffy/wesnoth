@@ -598,6 +598,7 @@ umcd_sources = Split("""
     umcd/database/connection_pool.cpp
     umcd/database/connection_instance.cpp
     umcd/server/basic_server.cpp
+    umcd/server/default_transfer_observer.cpp
     umcd/server/multi_threaded/server_mt.cpp
     umcd/server/umcd_server.cpp
     umcd/logger/logger.cpp
