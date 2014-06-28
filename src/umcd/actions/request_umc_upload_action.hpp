@@ -21,6 +21,8 @@
 #include <boost/optional.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
+#include <neev/buffer/prefixed_buffer.hpp>
+#include <neev/transfer_operation.hpp>
 
 class config;
 class otl_connect;
@@ -42,8 +44,9 @@ class request_umc_upload_action
 , public boost::enable_shared_from_this<request_umc_upload_action>
 {
 public:
-	typedef boost::asio::ip::tcp::socket socket_type;
-	typedef boost::shared_ptr<socket_type> socket_ptr;
+	using socket_type = boost::asio::ip::tcp::socket;
+	using socket_ptr = std::shared_ptr<socket_type>;
+  using send_buffer_type = neev::prefixed32_buffer<neev::send_op>;
 
 	virtual void execute(const socket_ptr& socket, const config& request);
 	virtual ~request_umc_upload_action();

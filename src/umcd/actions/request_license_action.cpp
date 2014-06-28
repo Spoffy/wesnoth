@@ -17,20 +17,25 @@ The license is not shipped with the Wesnoth client because this server can be re
 */
 
 #include "umcd/actions/request_license_action.hpp"
-#include "umcd/protocol/make_header.hpp"
-#include "umcd/protocol/server/close_on_error.hpp"
+//#include "umcd/protocol/make_header.hpp"
+//#include "umcd/protocol/server/close_on_error.hpp"
 #include "umcd/logger/asio_logger.hpp"
 #include "umcd/env/server_info.hpp"
 #include "umcd/error.hpp"
+#include "umcd/server/default_transfer_observer.hpp"
 
 #include "filesystem.hpp"
 #include "config.hpp"
 #include <boost/current_function.hpp>
+#include <neev/network_transfer.hpp>
+
+using namespace neev;
 
 namespace umcd{
 
 void request_license_action::execute(const socket_ptr& socket, const config& request)
 {
+
 	UMCD_LOG_IP(trace, socket) << BOOST_CURRENT_FUNCTION;
 
 	// (1) Validation of the request.
@@ -43,9 +48,8 @@ void request_license_action::execute(const socket_ptr& socket, const config& req
 		reply.child("request_license")["text"] = "\"" + read_file(info.wesnoth_dir() + get_umcd_license_file()) + "\"";
 
 		// (3) Sending the reply.
-		boost::shared_ptr<header_sender> sender = make_header_sender(socket, reply);
-		sender->on_event<transfer_error>(boost::bind(&close_on_error, socket, _1));
-		sender->async_send();
+    auto sender = make_transfer<send_buffer_type>(socket, default_transfer_observer(), reply.to_string());
+    sender->async_transfer();
 	}
 }
 
